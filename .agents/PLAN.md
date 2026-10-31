@@ -119,6 +119,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.6** Goal templates behind the category buttons. _needs P4.3a_
 
+- [ ] **P4.16** Add a goal from the Goals screen: suggested goals as buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) and a text box, which is the whole screen while there are no goals, where the user types or pastes what they want. Either sends the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form. The call has no tools and no scope, and nothing is created until the user confirms the form. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3a, P4.6_
+
 - [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.4, P4.5, P2.2_
 
 - [ ] **P4.9** `propose_goal`: from a conversation the model drafts a goal (title, brief, optionally a schedule) as a card the user edits and confirms before anything is created, never creating one itself; with an eval scenario where a chat about learning Rust yields a sensible draft. _needs P4.3, P4.5_
