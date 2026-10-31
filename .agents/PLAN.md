@@ -43,6 +43,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P1.7** The Channels screen: list, create, rename, archive, restore and delete channels from the UI; a channel view that sends a message, streams the run's events and shows a failed run's error in place. _needs P1.2, P1.4, P1.8_
 
+- [ ] **P1.9** Channels in the side rail: on wide screens each channel is listed indented under the Channels heading (the Home channel first once it exists), and the heading still opens the Channels screen for archive, restore and delete; on narrow screens the Channels tab opens the list itself, since the bottom bar has no room for children. UI only, with tests. _needs P1.7_
+
 - [x] **P1.5** Acceptance: two channels with separate histories survive a server restart and a reload; a failed run shows its error in place and the channel keeps working. _needs P1.1, P1.4, P1.7, P1.8_
 
 - [x] **P1.6** **Review** of Phase 1. _needs P1.1, P1.2, P1.3, P1.4, P1.5, P1.7, P1.8_
