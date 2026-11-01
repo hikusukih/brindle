@@ -162,7 +162,9 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P5.1** Feed items from scheduled runs: title, summary, link, date, source goal, deduplicated against existing items. _needs P4.2, P4.12, P4.3_
 
-- [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P1.1_
+- [ ] **P5.10** Feed items are untrusted text. A feed item's title, summary and link come from pages a scheduled run fetched, so they are written by whoever wrote the page. One function cleans an item before it is stored: a link is kept only if it is `http` or `https` (a `javascript:`, `data:` or similar link is dropped and the item keeps its text), title and summary are cut to fixed lengths and stored as plain text with markup left as text, and control characters are removed. The feed screen shows items as text and the link as a link that opens with `rel="noopener noreferrer"`; the Atom feed (P5.3) builds its XML with the same escaping and emits the same cleaned fields. Tests with hostile items (a script tag, a `javascript:` link, an unclosed CDATA, a huge title), and one eval scenario where a fetched page tries to put markup and a script link into a feed item. _needs P5.1_
+
+- [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P5.10, P1.1_
 
 - [ ] **P5.3** Atom feeds, overall and per goal, behind the token, and verified in a real RSS reader. _needs P5.1, P2.7, decision: How an RSS reader proves it may read the Atom feeds_
 
