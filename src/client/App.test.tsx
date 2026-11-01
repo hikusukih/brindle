@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, within } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { App } from "./App";
 
@@ -64,5 +64,25 @@ describe("App", () => {
     for (const label of ["Channels", "Goals", "Feed", "Artifacts"]) {
       expect(screen.getAllByRole("link", { name: label }).length).toBeGreaterThan(0);
     }
+  });
+
+  it("lists channels under the Channels heading in the wide rail only", async () => {
+    const list = [
+      { id: "c1", name: "Trip planning", archivedAt: null },
+      { id: "c2", name: "Budget", archivedAt: null },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => Response.json(url.startsWith("/api/channels") ? list : { message: "", since: "" })),
+    );
+    render(<App />);
+    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    // Once in the rail; the bar (narrow) renders no children.
+    const children = await nav.findAllByRole("link", { name: "Trip planning" });
+    expect(children).toHaveLength(1);
+    expect(children[0]?.getAttribute("href")).toBe("#/channels/c1");
+    expect(nav.getAllByRole("link", { name: "Budget" })).toHaveLength(1);
+    for (const tab of screen.getAllByRole("link", { name: "Channels" }))
+      expect(tab.getAttribute("href")).toBe("#/channels");
   });
 });

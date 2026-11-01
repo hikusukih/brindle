@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import type { Greeting } from "../server/app";
+import { api, type Channel } from "./api";
 import { ChannelsScreen } from "./Channels";
-import { type ScreenId, screenFromHash, screens } from "./screens";
+import { channelIdFromHash, type ScreenId, screenFromHash, screens } from "./screens";
 
 type State = { kind: "loading" } | { kind: "ready"; greeting: Greeting } | { kind: "error"; message: string };
 
@@ -36,6 +37,47 @@ function useScreen(): ScreenId {
   return screen;
 }
 
+// Wide screens only: the bottom bar has no room for children, so the narrow Channels tab opens the list itself.
+function RailChannels() {
+  const [channels, setChannels] = useState<Channel[]>([]);
+  const [hash, setHash] = useState(window.location.hash);
+  useEffect(() => {
+    const onChange = () => setHash(window.location.hash);
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  // A hash change reloads the list, which picks up a channel just created, archived or deleted.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hash is the reload trigger, not an input
+  useEffect(() => {
+    let cancelled = false;
+    api<Channel[]>("/api/channels?archived=false")
+      .then((list) => !cancelled && setChannels(list))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [hash]);
+  const open = channelIdFromHash(hash);
+  if (channels.length === 0) return null;
+  return (
+    <ul aria-label="Your channels" className="mt-1 mb-1 flex flex-col gap-1 pl-4">
+      {channels.map((c) => (
+        <li key={c.id}>
+          <a
+            href={`#/channels/${encodeURIComponent(c.id)}`}
+            aria-current={c.id === open ? "page" : undefined}
+            className={`flex min-h-10 items-center truncate rounded-lg px-3 text-sm ${
+              c.id === open ? "bg-slate-200 font-medium text-slate-900" : "text-slate-600 hover:bg-slate-100"
+            }`}
+          >
+            {c.name}
+          </a>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 function NavLinks({ current, orientation }: { current: ScreenId; orientation: "rail" | "bar" }) {
   const layout = orientation === "rail" ? "flex-col gap-1 p-3" : "justify-around pb-[env(safe-area-inset-bottom)]";
   return (
@@ -51,6 +93,7 @@ function NavLinks({ current, orientation }: { current: ScreenId; orientation: "r
           >
             {s.label}
           </a>
+          {orientation === "rail" && s.id === "channels" && <RailChannels />}
         </li>
       ))}
     </ul>
