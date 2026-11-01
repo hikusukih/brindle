@@ -1,5 +1,5 @@
 import type { ArtifactStore } from "../artifacts.js";
-import { createArtifactTool } from "./artifacts.js";
+import { createArtifactTool, findArtifactsTool, readArtifactTool } from "./artifacts.js";
 import { ToolRegistry } from "./registry.js";
 import { webFetchTool, webSearchTool } from "./web.js";
 
@@ -9,7 +9,11 @@ export function builtInTools(env: Record<string, string | undefined>, artifacts?
     webFetchTool({ allowPrivate: env.BRINDLE_WEB_FETCH_ALLOW_PRIVATE === "1" }),
   );
   const search = env.BRINDLE_SEARCH_URL?.trim();
-  if (artifacts) registry.register(createArtifactTool(artifacts));
+  if (artifacts) {
+    registry.register(createArtifactTool(artifacts));
+    registry.register(findArtifactsTool(artifacts));
+    registry.register(readArtifactTool(artifacts));
+  }
   if (search) registry.register(webSearchTool(search));
   return registry;
 }

@@ -52,7 +52,7 @@ describe("run engine", () => {
     const second = engine.start(channel.id, "second");
     await engine.whenSettled(second.id);
 
-    expect(scripted.requests[1]?.messages.map((m) => m.content)).toEqual(["first", "one", "second"]);
+    expect(scripted.requests[1]?.messages.slice(1).map((m) => m.content)).toEqual(["first", "one", "second"]);
   });
 
   it("ends a failed run with the error shown and lets the channel carry on", async () => {
