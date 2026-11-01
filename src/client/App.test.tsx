@@ -85,4 +85,34 @@ describe("App", () => {
     for (const tab of screen.getAllByRole("link", { name: "Channels" }))
       expect(tab.getAttribute("href")).toBe("#/channels");
   });
+
+  it("takes an archived channel out of the rail without a navigation", async () => {
+    let list = [
+      { id: "c1", name: "Trip planning", archivedAt: null },
+      { id: "c2", name: "Budget", archivedAt: null },
+    ];
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        if (url === "/api/channels/c2/archive") {
+          list = list.filter((c) => c.id !== "c2");
+          return Response.json({});
+        }
+        if (url === "/api/channels?archived=false") return Response.json(list);
+        if (url === "/api/greeting") return Response.json({ message: "", since: "" });
+        return Response.json([]);
+      }),
+    );
+    window.location.hash = "#/channels";
+    render(<App />);
+    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    expect(await nav.findAllByRole("link", { name: "Budget" })).toHaveLength(1);
+    const budgetRow = (await screen.findAllByText("Budget")).find((el) => el.closest("main"));
+    const row = (budgetRow as HTMLElement).closest("li") as HTMLElement;
+    await act(async () => {
+      within(row).getByRole("button", { name: "Archive" }).click();
+    });
+    await vi.waitFor(() => expect(nav.queryByRole("link", { name: "Budget" })).toBeNull());
+    expect(nav.getByRole("link", { name: "Trip planning" })).toBeTruthy();
+  });
 });

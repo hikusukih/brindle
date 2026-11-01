@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, type Channel, type Run, type RunEvent } from "./api";
+import { announceChannelsChanged, api, type Channel, type Run, type RunEvent } from "./api";
 import { channelIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -51,6 +51,7 @@ function ChannelList() {
       await api(path, { method, body });
       setRenaming(null);
       load();
+      announceChannelsChanged();
     } catch (e) {
       setProblem((e as Error).message);
     }
@@ -61,6 +62,7 @@ function ChannelList() {
     try {
       const made = await api<Channel>("/api/channels", { method: "POST", body: { name } });
       setName("");
+      announceChannelsChanged();
       window.location.hash = `#/channels/${made.id}`;
     } catch (err) {
       setProblem((err as Error).message);

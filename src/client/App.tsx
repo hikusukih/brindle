@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Greeting } from "../server/app";
-import { api, type Channel } from "./api";
+import { api, type Channel, channelsChanged } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { channelIdFromHash, type ScreenId, screenFromHash, screens } from "./screens";
 
@@ -41,13 +41,19 @@ function useScreen(): ScreenId {
 function RailChannels() {
   const [channels, setChannels] = useState<Channel[]>([]);
   const [hash, setHash] = useState(window.location.hash);
+  const [changes, setChanges] = useState(0);
   useEffect(() => {
-    const onChange = () => setHash(window.location.hash);
-    window.addEventListener("hashchange", onChange);
-    return () => window.removeEventListener("hashchange", onChange);
+    const onHash = () => setHash(window.location.hash);
+    const onChanged = () => setChanges((n) => n + 1);
+    window.addEventListener("hashchange", onHash);
+    window.addEventListener(channelsChanged, onChanged);
+    return () => {
+      window.removeEventListener("hashchange", onHash);
+      window.removeEventListener(channelsChanged, onChanged);
+    };
   }, []);
-  // A hash change reloads the list, which picks up a channel just created, archived or deleted.
-  // biome-ignore lint/correctness/useExhaustiveDependencies: hash is the reload trigger, not an input
+  // A hash change or a channels-changed event reloads the list, which picks up a channel created, renamed, archived or deleted.
+  // biome-ignore lint/correctness/useExhaustiveDependencies: hash and changes are reload triggers, not inputs
   useEffect(() => {
     let cancelled = false;
     api<Channel[]>("/api/channels?archived=false")
@@ -56,7 +62,7 @@ function RailChannels() {
     return () => {
       cancelled = true;
     };
-  }, [hash]);
+  }, [hash, changes]);
   const open = channelIdFromHash(hash);
   if (channels.length === 0) return null;
   return (
