@@ -1,10 +1,15 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { events } from "../src/server/db/schema.js";
+import { artifacts, events } from "../src/server/db/schema.js";
 import type { ModelAdapter } from "../src/server/model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
+import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 
 // One scenario is one channel and a list of user messages, each sent as its own run. The expectations are
@@ -21,12 +26,23 @@ export type RunExpectation = {
   approvals?: ("approve" | "decline")[];
   /** Every string must appear in some tool result stored on the run. */
   toolResultIncludes?: string[];
+  /** The fake tools that actually ran, in order; an empty list asserts that nothing external was sent. */
+  executed?: string[];
   /** Whether the first tool result was cut for the model. */
   toolResultTruncated?: boolean;
 };
 
 /** A stand-in tool whose result is fixed, so scenarios can exercise effect levels and result sizing. */
 export type FakeTool = { name: string; effect: EffectLevel; result: string; repeat?: number };
+
+/** An artifact made earlier in another channel, with a fixed id so a script can name it. Giving any adds the real artifact tools. */
+export type SeedArtifact = {
+  id: string;
+  title: string;
+  kind: "document" | "code" | "data" | "page" | "link";
+  content: string;
+  fromChannel: string;
+};
 
 export type Scenario = {
   name: string;
@@ -35,6 +51,7 @@ export type Scenario = {
   script: ScriptedFixture;
   limits?: Partial<RunLimits>;
   tools?: FakeTool[];
+  seedArtifacts?: SeedArtifact[];
   expect: RunExpectation[];
 };
 
@@ -43,14 +60,44 @@ export type ScenarioResult = { name: string; failures: string[] };
 export async function runScenario(scenario: Scenario, live?: ModelAdapter): Promise<ScenarioResult> {
   const db = openDatabase(":memory:");
   const tools = new ToolRegistry();
+  let ran: string[] = [];
   for (const t of scenario.tools ?? []) {
     tools.register({
       name: t.name,
       description: t.name,
       effect: t.effect,
       parameters: { type: "object", properties: {} },
-      execute: async () => t.result.repeat(t.repeat ?? 1),
+      execute: async () => {
+        ran.push(t.name);
+        return t.result.repeat(t.repeat ?? 1);
+      },
     });
+  }
+  if (scenario.seedArtifacts?.length) {
+    const dir = mkdtempSync(join(tmpdir(), "brindle-eval-"));
+    const store = new ArtifactStore(db, dir);
+    for (const a of scenario.seedArtifacts) {
+      mkdirSync(join(dir, a.id), { recursive: true });
+      writeFileSync(join(dir, a.id, "artifact.txt"), a.content);
+      db.insert(artifacts)
+        .values({
+          id: a.id,
+          title: a.title,
+          kind: a.kind,
+          scope: "channel",
+          scopeId: createChannel(db, a.fromChannel).id,
+          scopeName: a.fromChannel,
+          runId: null,
+          file: `${a.id}/artifact.txt`,
+          mime: "text/plain",
+          size: a.content.length,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+    }
+    tools.register(createArtifactTool(store));
+    tools.register(findArtifactsTool(store));
+    tools.register(readArtifactTool(store));
   }
   const engine = new RunEngine(
     db,
@@ -69,6 +116,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     const want = scenario.expect[i];
     if (!want) continue;
     const label = `run ${i + 1}`;
+    ran = [];
     const run = engine.start(channel.id, text);
     // Answer approval cards as they appear; the run is parked in "waiting" until each one is answered.
     const answers = [...(want.approvals ?? [])];
@@ -119,6 +167,9 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     for (const needle of want.toolResultIncludes ?? []) {
       if (!results.some((r) => r.result.includes(needle)))
         failures.push(`${label}: no tool result includes "${needle}"`);
+    }
+    if (want.executed && ran.join() !== want.executed.join()) {
+      failures.push(`${label}: tools that ran were [${ran.join(", ")}], expected [${want.executed.join(", ")}]`);
     }
     if (want.toolResultTruncated !== undefined && results[0]?.truncated !== want.toolResultTruncated) {
       failures.push(

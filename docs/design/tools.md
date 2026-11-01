@@ -26,7 +26,7 @@ Rules that follow from the level: `read` and `local` run immediately. `external`
 
 ### The approval flow
 
-When the model calls an `external` tool, the engine does not execute it. It appends an `approval_request` event (run id, call id, tool name, the arguments as the tool wants them shown, and a one-line reason the tool derives from them) and parks the run in a new `waiting` status. The UI shows the event as a card with Approve and Decline. The decision arrives on `POST /api/runs/:id/approvals/:callId` with `approve` or `decline`.
+When the model calls an `external` tool, the engine does not execute it. It appends an `approval_request` event (run id, call id, tool name, the arguments as the tool wants them shown, and a one-line reason the tool derives from them) and parks the run in a new `waiting` status. The UI shows the event as a **card** with Approve and Decline. The decision arrives on `POST /api/runs/:id/approvals/:callId` with `approve` or `decline`.
 
 - Approve: the engine appends an `approval_decision` event, runs the tool, and the loop continues.
 - Decline: the tool result sent to the model is "The user declined this action." The model may continue without it. A decline is never retried by the engine.

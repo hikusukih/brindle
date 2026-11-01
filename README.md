@@ -75,6 +75,26 @@ Each turn answers one model call and the script does not loop, so a fixture of N
 
 The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
 
+## Plug-in tools over MCP
+
+Put a `mcp.json` in the data directory to add tools from MCP servers started over stdio:
+
+```json
+{
+  "servers": {
+    "notes": {
+      "command": "npx",
+      "args": ["-y", "example-notes-mcp-server"],
+      "env": ["NOTES_API_KEY"],
+      "effects": { "search_notes": "read", "add_note": "local" },
+      "defaultEffect": "external"
+    }
+  }
+}
+```
+
+Each tool appears to the model as `<server>__<tool>`. You assign its effect level in `effects`: `read` and `local` run at once, `external` waits for your approval. A tool you haven't classified takes `defaultEffect`, which is `external` unless you say otherwise. The server's process gets only `PATH`, `HOME` and the variables named in `env`; secrets come from the environment, never from the file. A server that fails to start is skipped with a warning. Restart Brindle after editing the file.
+
 ## Development
 
 `npm run dev` starts the server on port 8787 and Vite on port 5173 with `/api` proxied to the server. `npm test` runs Vitest; `npm run lint` runs Biome (`npm run lint:fix` applies its safe fixes). After changing `src/server/db/schema.ts`, run `npm run db:generate` to add a migration; migrations apply on startup.

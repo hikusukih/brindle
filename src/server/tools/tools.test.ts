@@ -8,6 +8,7 @@ const ctx = {
   scope: { kind: "channel", id: "c" } as const,
   signal: new AbortController().signal,
   log: () => {},
+  emit: () => {},
 };
 const tool = (over: Partial<Tool> = {}): Tool => ({
   name: "t",
