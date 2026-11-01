@@ -178,7 +178,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.19** Standing permission, the check: the `tool_grants` and `grant_uses` tables, the opt-in `grantSubject` on a tool, `needsApproval` consulting a goal's grants (live, unexpired, uses left, exact subject, goal active; the per-use secret rule comes with P6.9), the use spent in the transaction that records the decision, and `approval_decision` carrying `by: "grant"`. Proved with a fake external tool; no real tool opts in. Eval scenarios for the check, concurrency and injection. _needs P4.10, P4.3, P2.3_
 
-- [ ] **P4.20** Standing permission, the user's side: the allow-again choice on the approval card with an editable count and expiry, the goal page's list of grants with revoke, and the transcript showing a use as "Allowed by standing permission". Eval scenarios for creation. _needs P4.19, P4.3a_
+- [ ] **P4.20** Standing permission, the user's side: the allow-again choice on the approval card with an editable count and expiry, the list of the goal's grants with revoke in its channel's side panel (P4.17), and the transcript showing a use as "Allowed by standing permission". Eval scenarios for creation. _needs P4.19, P4.17_
 
 - [ ] **P4.21** Unattended runs without a grant: the goal marked "waiting for you" on the Goals screen while a scheduled run is parked, a declined or timed-out call recorded on the goal, and the next fire told about it in its task message. Eval scenarios. _needs P4.19, P4.2, P4.3a_
 
