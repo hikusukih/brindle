@@ -115,15 +115,15 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P4.3** Goals, server side: create, edit and archive a goal, and the goal's channel with its brief pinned. _needs P4.1, P1.2_
 
-- [ ] **P4.3a** The Goals screen: a grid of tiles about 200 by 200 pixels, one per goal, each with an icon the client draws from the goal's title (initials or stylized text on a color derived from the title, so it is deterministic and needs no image), the title, a line of the brief and the next scheduled run, and each opening the goal page (P4.17); and the form to create and edit one. _needs P4.3, P4.2, P1.1_
+- [ ] **P4.17** The goal page: one goal's brief, its state document, its schedules with the next run and its own channel, with the actions to edit, archive and delete it (delete asks about its artifacts as P4.18 says), and the form to create a goal, which opens the new goal's page. Until the Goals screen exists, a goal's page opens from its channel's header and the create form from the Channels screen. Its recent reports join the page once reports exist, and its linked channels with P4.14. _needs P4.3, P4.4, P4.18_
 
-- [ ] **P4.17** The goal page: opening a goal from the grid shows its brief, its state document, its schedules with the next run, its own channel and its linked channels (with link and unlink), and its recent reports once reports exist, with the actions to edit, archive and delete. _needs P4.3a, P4.4, P4.14_
+- [ ] **P4.3a** The Goals screen: a grid of tiles about 200 by 200 pixels, one per goal, each with an icon the client draws from the goal's title (initials or stylized text on a color derived from the title, so it is deterministic and needs no image), the title, a line of the brief and the next scheduled run, each opening the goal's page; the create form moves here from the Channels screen. _needs P4.17, P4.2, P1.1_
 
 - [ ] **P4.18** A goal's channel in the UI: the goal's channel view shows its brief pinned at the top; the channel list marks goal channels (the server returns the owning goal's id with each channel) and the Channels screen leaves rename, archive and delete on them to the goal, since the channels API now refuses those with 409 `goal_channel`; and deleting a goal asks about the artifacts its channel made, as deleting a channel does (keep all by default, delete all, or choose which), with the goal delete API taking the same list. _needs P4.3, P1.7, P2.4a_
 
 - [ ] **P4.4** The state document: `update_goal_state` with versions, shown as an artifact, readable and editable by the user, with history. _needs P4.3, P2.4_
 
-- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4_
+- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4, P4.17_
 
 - [ ] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
 
@@ -139,7 +139,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
-- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.18_
+- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.17, P4.18_
 
 ## Phase 5 — the feed
 
