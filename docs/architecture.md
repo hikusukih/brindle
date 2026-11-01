@@ -74,6 +74,10 @@ Artifacts belong to the user, not to the channel that made them. Any run in any 
 
 A suggestion run, at most daily, reads goal briefs and states, channel purpose statements and recent activity, and proposes a few cards: a next step on a goal, a schedule that would help it, a new goal, or a login to connect so a goal can do more. Accepting a card turns it into a run, a goal, a schedule or a credential request. Dismissed cards are remembered and don't come back. Suggestions can be turned off.
 
+## What the model is told
+
+Every request starts with fixed harness instructions that describe Brindle to the model: its surfaces (channels, goals, the feed, artifacts, reports), its tools, and how to behave. The run's place follows the scope statement: which channel or goal it is in and what kind of run it is, such as a conversation, a goal run or a suggestion run. The instructions are the same for every run, so the model server's prompt cache stays useful; the place changes per scope and so comes after them. A user-written Soul and the Home channel's directory of the instance sit in layers of their own. The context design note (`docs/design/context.md`) says where each layer goes and how big it may be.
+
 ## Tools
 
 The model acts through tools in a registry. Each tool declares its **effect level**: read-only, local (writes only inside Brindle), or external (does something in the world, such as posting, buying or sending). External tools require the user's approval per call unless a goal grants standing permission for that tool. Built-in tools:
