@@ -171,7 +171,6 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
   });
-<<<<<<< HEAD
   app.get("/api/artifacts", (c) => {
     const kind = c.req.query("kind");
     const scope = c.req.query("scope");
@@ -179,7 +178,7 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
       throw new HTTPException(400, { message: "Unknown kind." });
     if (scope && scope !== "channel" && scope !== "goal") throw new HTTPException(400, { message: "Unknown scope." });
     return c.json(artifacts?.list({ kind, scope }) ?? []);
-=======
+  });
   // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
   // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
   app.get("/api/artifacts/:id/file", (c) => {
@@ -200,7 +199,6 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
       "x-content-type-options": "nosniff",
       ...(shownAsText ? {} : { "content-disposition": download }),
     });
->>>>>>> origin/main
   });
   app.get("/api/channels/:id/artifacts", (c) => {
     const id = c.req.param("id");
