@@ -13,6 +13,8 @@ Open questions first, each with a recommendation. A session that hits a question
 
 ## Settled
 
+- Name: the persistent catch-all channel is the Home channel (it was the landing channel), and the channel that owns a reference document is its owning channel (it was its home), so one word doesn't carry two meanings. Chosen by the user in UI feedback on October 29, 2026.
+- The Home channel knows the instance: a directory of active channels and goals, read tools across it, no summary. Text from other channels can now reach a run that also reads untrusted input; that is accepted because external actions, secrets and writes to shared things are held by approval cards, the key manager and versioning, and context isolation was a second line, not the first. Other channels can load the same directory on demand. Chosen by the user on October 29, 2026.
 - Public repo, MIT license.
 - Stack: TypeScript throughout, React + Vite + Tailwind PWA, Hono on Node, SQLite through Drizzle, SSE, Vitest, Docker. The most standard choice, so any agent can pick it up cold.
 - The harness is ours; models are pluggable behind an adapter. Whether external agents plug in as ACP delegates is reopened under Open.
