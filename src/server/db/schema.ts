@@ -53,6 +53,40 @@ export const events = sqliteTable(
   (t) => [uniqueIndex("events_run_seq_idx").on(t.runId, t.seq)],
 );
 
+// A goal's recurring task. goal_id is a plain id until the goals table exists (P4.3); the scheduler never looks inside it.
+export const schedules = sqliteTable("schedules", {
+  id: text("id").primaryKey(),
+  goalId: text("goal_id").notNull(),
+  // Five fields, read in the user's time zone.
+  cron: text("cron").notNull(),
+  prompt: text("prompt").notNull(),
+  // channel in Phase 4; feed and digest arrive later as new values.
+  destination: text("destination").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  nextFireAt: text("next_fire_at"),
+  // catch_up_once | skip
+  missedPolicy: text("missed_policy").notNull(),
+  createdAt: text("created_at").notNull(),
+});
+
+// Both the waiting list and the log of what fired. The unique index makes double-firing an occurrence impossible.
+export const scheduleFires = sqliteTable(
+  "schedule_fires",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => schedules.id, { onDelete: "cascade" }),
+    dueAt: text("due_at").notNull(),
+    // waiting | started | missed | skipped_busy | skipped_disabled | failed_to_start
+    state: text("state").notNull(),
+    runId: text("run_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("schedule_fires_due_idx").on(t.scheduleId, t.dueAt)],
+);
+
 // An ongoing project with its own channel. The brief lives in scope_statements; the state document arrives with P4.4.
 export const goals = sqliteTable("goals", {
   id: text("id").primaryKey(),

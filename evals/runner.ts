@@ -1,10 +1,15 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { eq } from "drizzle-orm";
+import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { events } from "../src/server/db/schema.js";
+import { artifacts, events } from "../src/server/db/schema.js";
 import type { ModelAdapter } from "../src/server/model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
+import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 
 // One scenario is one channel and a list of user messages, each sent as its own run. The expectations are
@@ -30,6 +35,15 @@ export type RunExpectation = {
 /** A stand-in tool whose result is fixed, so scenarios can exercise effect levels and result sizing. */
 export type FakeTool = { name: string; effect: EffectLevel; result: string; repeat?: number };
 
+/** An artifact made earlier in another channel, with a fixed id so a script can name it. Giving any adds the real artifact tools. */
+export type SeedArtifact = {
+  id: string;
+  title: string;
+  kind: "document" | "code" | "data" | "page" | "link";
+  content: string;
+  fromChannel: string;
+};
+
 export type Scenario = {
   name: string;
   description: string;
@@ -37,6 +51,7 @@ export type Scenario = {
   script: ScriptedFixture;
   limits?: Partial<RunLimits>;
   tools?: FakeTool[];
+  seedArtifacts?: SeedArtifact[];
   expect: RunExpectation[];
 };
 
@@ -57,6 +72,32 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
         return t.result.repeat(t.repeat ?? 1);
       },
     });
+  }
+  if (scenario.seedArtifacts?.length) {
+    const dir = mkdtempSync(join(tmpdir(), "brindle-eval-"));
+    const store = new ArtifactStore(db, dir);
+    for (const a of scenario.seedArtifacts) {
+      mkdirSync(join(dir, a.id), { recursive: true });
+      writeFileSync(join(dir, a.id, "artifact.txt"), a.content);
+      db.insert(artifacts)
+        .values({
+          id: a.id,
+          title: a.title,
+          kind: a.kind,
+          scope: "channel",
+          scopeId: createChannel(db, a.fromChannel).id,
+          scopeName: a.fromChannel,
+          runId: null,
+          file: `${a.id}/artifact.txt`,
+          mime: "text/plain",
+          size: a.content.length,
+          createdAt: new Date().toISOString(),
+        })
+        .run();
+    }
+    tools.register(createArtifactTool(store));
+    tools.register(findArtifactsTool(store));
+    tools.register(readArtifactTool(store));
   }
   const engine = new RunEngine(
     db,
