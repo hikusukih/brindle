@@ -230,7 +230,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 8 — briefs and notifications
 
-- [ ] **P8.1** `speak`: text-to-speech through an OpenAI-compatible speech endpoint, saved as an audio artifact with a player in the gallery. _needs P2.3, P2.4, P2.4a_
+- [ ] **P8.1** `speak`: text-to-speech through an OpenAI-compatible speech endpoint, checked against Kokoro-FastAPI as the decision says and documented in the README, saved as an audio artifact with a player in the gallery. _needs P2.3, P2.4, P2.4a_
 
 - [ ] **P8.2** The daily digest, a roll-up view of the reports store (P5.7): new feed items, goal check-ins, finished long runs, in-app and optionally to a webhook. _needs P5.1, P4.2, P4.12_
 
