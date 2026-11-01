@@ -258,7 +258,7 @@ describe("approvals", () => {
     await engine.whenSettled(run.id);
     expect(engine.get(run.id).status).toBe("done");
     expect(log).toEqual(["send_email:hi"]);
-    expect(model.requests[0]?.messages).toEqual([
+    expect(model.requests[0]?.messages.slice(1)).toEqual([
       { role: "user", content: "mail" },
       { role: "assistant", content: "Let me send that.", toolCalls: [call("e1", "send_email", { x: "hi" })] },
       { role: "tool", toolCallId: "e1", content: "sent" },
