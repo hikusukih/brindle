@@ -21,7 +21,7 @@ Each document puts these terms in bold at their first use and uses them only in 
 
 ## Guiding principle: calm
 
-The agent works on the user's behalf and reports when there is something worth reporting. Scheduled work lands in the feed or a digest, not a ping. Notifications exist, and the user turns them on per goal or channel. Suggestions are capped and remember what was dismissed. A reply ends when it is done, without a list of other things the agent could do.
+Calm guides the architecture and sets the defaults; it does not limit what the user wants. By default the agent works on the user's behalf and reports when there is something worth reporting. Scheduled work lands in the feed or a digest, not a ping. Notifications exist, and the user turns them on per goal or channel. Suggestions are capped and remember what was dismissed. A reply ends when it is done, without a list of other things the agent could do. A user who wants a chattier agent, more offers or more notifications can have them, through Settings, and nothing in the harness refuses that; what the harness never does is start from the louder setting.
 
 ## The run
 
