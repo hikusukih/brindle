@@ -17,6 +17,7 @@ Each document puts these terms in bold at their first use and uses them only in 
 - **Step:** one model call within a run, together with the tool calls it asks for.
 - **Request:** what one step sends to the model: the assembled context and the tool definitions. A run sends one request per step, so context assembly builds requests, not runs.
 - **Housekeeping call:** a model call the harness makes for itself, outside any run: drafting a purpose statement, compaction, a drift check, a branch seed, a goal draft. It has limits of its own and counts against no run.
+- **Report:** an item in the reports store: a found item for the feed, an agent-written account of what a run did, or a harness-written system event. A report is never part of a conversation's context unless the user attaches it to a message.
 - **Card:** an item shown to the user that asks for a decision and records the answer: approve or decline a tool call, accept or dismiss a suggestion, confirm a drafted goal, or fill in a form such as a credential request. Text that only goes into the model's context is never a card.
 - **Scope statement:** the short text sent with every run to say what its scope is for: a channel's purpose statement, drafted by a housekeeping call and editable by the user, or a goal's brief, written by the user. They are one type in code (`ScopeStatement`), versioned in one table (`scope_statements`). Older notes and PRs call the purpose statement a purpose card.
 - "Turn" is not used in the docs. In the code and the scripted model's fixtures a turn is one model response, which is a step; in prose, say step, or "message" for a single message.
@@ -60,9 +61,11 @@ A goal is an ongoing project: "learn Rust", "keep me posted on shows at a local 
 
 The category buttons on the Goals screen (interests, relationships, finance, career, and so on) are prompt templates that draft a goal for the user to edit before saving. The screen also offers suggested goals as buttons and an open text box, which is the whole screen while there are no goals; the user's words go to a housekeeping call that drafts a goal into the same edit form, and nothing is created until the user confirms it.
 
-## Feed
+## Feed and reports
 
 The feed collects items that scheduled runs produce for the user to skim: new listings, articles, updates. Items are deduplicated against what is already there and can be marked read. The feed is also published as an Atom feed behind the user's token, so any RSS reader can follow it, and individual goals can publish their own feed.
+
+Feed items are one kind of **report**. The same store holds run reports, the agent-written account of what a scheduled or goal run did, and system reports, which the harness writes from templates without a model call: a scheduled run failed or was missed, a run stopped on a limit, an update is available. Reports show in a pane beside the Home channel and in each channel's own pane, never in a conversation's transcript, and enter a run's context only when the user chooses "Attach to message", which adds a labeled quotation. The digest is a roll-up view of the store. No notification is attached to a report unless the user turns one on.
 
 ## Artifacts
 

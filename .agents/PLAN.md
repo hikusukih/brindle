@@ -172,7 +172,13 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 5 — the feed
 
-- [ ] **P5.1** Feed items from scheduled runs: title, summary, link, date, source goal, deduplicated against existing items. _needs P4.2, P4.12, P4.3_
+- [ ] **P5.7** **Design note:** reports, system events, the feed and the digest in one store. A report has a kind: found (a feed item from a scheduled run), run (the agent-written account of what a scheduled or goal run did), or system (written by the harness from a template with no model call: a scheduled run failed or was missed, a run stopped on a limit, a credential problem, an update is available, a configured model went missing). The note settles: the table and its kinds; deduplication for found items only; which scope each kind belongs to, and how a report that belongs to a goal is listed in each channel linked to it without being copied; the Home channel's reports pane (a side panel on wide screens, a sheet on a phone) and each channel's own; the feed screen and the digest as views of the same store; the "Attach to message" action, which adds a quoted-report event to the conversation, labeled as a quotation and carrying no authority, and is the only way a report enters a run's context; which errors become system reports and which stay in a diagnostics count under Settings (failed housekeeping calls); and that no notification is attached by default. Eval scenarios include a report that tries to instruct the agent being attached to a message. _needs P4.1, P3.8_
+
+- [ ] **P5.1** Feed items from scheduled runs, stored as reports of kind found (P5.7): title, summary, link, date, source goal, deduplicated against existing found items. _needs P4.2, P4.12, P4.3, P5.8_
+
+- [ ] **P5.8** The reports store and system events: the table, system reports written from templates (a scheduled run failed or was missed, a run stopped on a limit, a credential problem), run reports from scheduled and goal runs, and the API to list, filter and mark them read. _needs P5.7, P4.2, P4.3_
+
+- [ ] **P5.9** The reports pane and "Attach to message": the Home channel's pane and each channel's own, and the quoted-report event shown to the user and sent to the model as a labeled quotation. The Home channel itself is built by the box the Phase 3 review adds for P3.8, and this box's needs gain it then. _needs P5.8, P3.8_
 
 - [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P1.1_
 
@@ -218,7 +224,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P8.1** `speak`: text-to-speech through an OpenAI-compatible speech endpoint, saved as an audio artifact with a player in the gallery. _needs P2.3, P2.4, P2.4a_
 
-- [ ] **P8.2** The daily digest: new feed items, goal check-ins, finished long runs, in-app and optionally to a webhook. _needs P5.1, P4.2, P4.12_
+- [ ] **P8.2** The daily digest, a roll-up view of the reports store (P5.7): new feed items, goal check-ins, finished long runs, in-app and optionally to a webhook. _needs P5.1, P4.2, P4.12_
 
 - [ ] **P8.3** Web push, opt-in per goal or channel, nothing on by default. _needs P8.2_
 
