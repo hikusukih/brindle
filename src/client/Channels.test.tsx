@@ -299,6 +299,35 @@ describe("channel view", () => {
     expect(calls).toContain("POST /api/channels/c1/model");
   });
 
+  it("scrolls to and highlights the run named in the address, and only that one", async () => {
+    window.location.hash = "#/channels/c1/runs/r2";
+    const scrolled: string[] = [];
+    Element.prototype.scrollIntoView = function (this: Element) {
+      scrolled.push(this.id);
+    };
+    const mk = (id: string, text: string): Run => ({
+      id,
+      channelId: "c1",
+      status: "done",
+      stopReason: null,
+      startedAt: stamp,
+      endedAt: stamp,
+      events: [
+        { seq: 1, type: "message", data: JSON.stringify({ text }), createdAt: stamp },
+      ] as unknown as Run["events"],
+    });
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([mk("r1", "First"), mk("r2", "Second")]),
+    });
+    render(<ChannelsScreen />);
+    await screen.findByText("Second");
+    await waitFor(() => expect(scrolled).toEqual(["run-r2"]));
+    const marked = screen.getAllByRole("region", { current: "location" });
+    expect(marked.map((m) => m.id)).toEqual(["run-r2"]);
+  });
+
   it("rebuilds each channel's own history and failure after a reload", async () => {
     stubFetch({
       "/api/channels": () => Response.json([channel("c1", "Plans"), channel("c2", "Cooking")]),

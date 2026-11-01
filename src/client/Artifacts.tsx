@@ -11,7 +11,11 @@ function Source({ a }: { a: Artifact }) {
   return (
     <>
       from <a href={`#/channels/${a.scopeId}`}>{a.scopeName}</a>
-      {a.runId && `, run ${a.runId.slice(0, 8)}`}
+      {a.runId && (
+        <>
+          , <a href={`#/channels/${a.scopeId}/runs/${a.runId}`}>run {a.runId.slice(0, 8)}</a>
+        </>
+      )}
     </>
   );
 }

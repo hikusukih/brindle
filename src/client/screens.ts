@@ -39,3 +39,9 @@ export function channelIdFromHash(hash: string): string | null {
   const [screen, id] = hash.replace(/^#\/?/, "").split("/");
   return screen === "channels" && id ? decodeURIComponent(id) : null;
 }
+
+/** `#/channels/<id>/runs/<runId>` points at one run in a channel, so the gallery can link to the run an artifact came from. */
+export function runIdFromHash(hash: string): string | null {
+  const [screen, , part, runId] = hash.replace(/^#\/?/, "").split("/");
+  return screen === "channels" && part === "runs" && runId ? decodeURIComponent(runId) : null;
+}

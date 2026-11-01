@@ -45,6 +45,18 @@ describe("ArtifactsScreen", () => {
     expect(screen.getByText(/from deleted channel Lost/)).toBeTruthy();
   });
 
+  it("links the run an artifact came from to that run in its channel", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async () => Response.json([art({})])),
+    );
+    render(<ArtifactsScreen empty={empty} />);
+    expect(await screen.findByRole("link", { name: "run 01234567" })).toHaveProperty(
+      "hash",
+      "#/channels/c1/runs/0123456789",
+    );
+  });
+
   it("asks the server for the chosen kind and scope", async () => {
     const fetchMock = vi.fn(async () => Response.json([]));
     vi.stubGlobal("fetch", fetchMock);

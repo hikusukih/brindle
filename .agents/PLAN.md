@@ -72,7 +72,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P2.4a** The gallery screen: newest first, filter by kind and scope, each item linked to its channel (or marked "from deleted channel <name>" once that is gone), with the empty state from P1.1 until the first artifact exists. Deleting a channel that made artifacts asks first: keep all (the default), delete all, or choose which. _needs P2.4, P1.1_
 
-- [ ] **P2.4b** Gallery items link to their run: a per-run anchor in the channel view (for example `#/channels/<id>/runs/<runId>`) that scrolls to and highlights that run, and the gallery's run id becomes a link to it. _needs P2.4a_
+- [x] **P2.4b** Gallery items link to their run: a per-run anchor in the channel view (for example `#/channels/<id>/runs/<runId>`) that scrolls to and highlights that run, and the gallery's run id becomes a link to it. _needs P2.4a_
 
 - [x] **P2.13** Serving artifacts safely: an endpoint that returns an artifact's file only with `Content-Security-Policy: sandbox`, `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` for every kind except plain text and Markdown (rendered by the client as text, never as HTML), so a `page` artifact written by the model, possibly from fetched web text, cannot run script on the app's origin or reach the app's API. With a test that an HTML artifact containing a script is served with those headers. _needs P2.4_
 

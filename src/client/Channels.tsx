@@ -1,7 +1,7 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import { type Artifact, api, type Channel, type Run, type RunEvent } from "./api";
 import { AuthedEventSource } from "./events";
-import { channelIdFromHash } from "./screens";
+import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
 const primary = `${button} bg-slate-900 text-white disabled:opacity-50`;
@@ -395,7 +395,19 @@ function ChannelView({ id }: { id: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   const [modelText, setModelText] = useState("");
+  const [target, setTarget] = useState(() => runIdFromHash(window.location.hash));
   const source = useRef<AuthedEventSource | null>(null);
+
+  useEffect(() => {
+    const onChange = () => setTarget(runIdFromHash(window.location.hash));
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  // The run may arrive after the page does, so look again whenever the list changes.
+  const found = target !== null && runs.some((r) => r.id === target);
+  useEffect(() => {
+    if (found) document.getElementById(`run-${target}`)?.scrollIntoView?.({ block: "start" });
+  }, [found, target]);
 
   const reload = useCallback(async () => {
     setRuns(await api<Run[]>(`/api/channels/${id}/runs`));
@@ -526,7 +538,13 @@ function ChannelView({ id }: { id: string }) {
       )}
       <div className="flex flex-col gap-4">
         {runs.map((run) => (
-          <section key={run.id} aria-label="Run" className="flex flex-col gap-2">
+          <section
+            key={run.id}
+            id={`run-${run.id}`}
+            aria-label="Run"
+            aria-current={run.id === target ? "location" : undefined}
+            className={`flex flex-col gap-2 ${run.id === target ? "rounded-lg bg-amber-50 p-2 ring-2 ring-amber-300" : ""}`}
+          >
             {run.events.map((ev) => {
               if (ev.type === "approval_request") {
                 const d = parse(ev);
