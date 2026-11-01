@@ -92,6 +92,10 @@ The model acts through tools in a registry. Each tool declares its **effect leve
 
 More tools plug in over **MCP**. Handing whole external agents (coding agents and the like) a task over **ACP** as delegates is deferred; see "ACP delegates" in `docs/decisions.md`.
 
+## The Soul
+
+The Soul is a short text the user writes to tune the agent's personality and voice, kept apart from the harness instructions and sent right after them on every request. The user edits it in Settings, with a count of its tokens against a cap, a few presets to start from (choosing one copies it, so a later release never changes what the user saved) and a button that asks for a shorter version and saves nothing until the user accepts. The agent cannot write it, because it is the one text every run reads first. It shapes tone and defaults only: it cannot change tool permissions, approvals, effect levels or the key manager.
+
 ## Models
 
 The model is pluggable behind one adapter contract: send messages and tool definitions, get back a stream of text and tool calls. Adapters: OpenAI-compatible chat completions (covers local servers such as llama.cpp, ollama and vLLM, plus most hosted APIs) and the Anthropic Messages API. Different scopes can use different models, so a cheap model can run watchers while a strong one handles conversation. Text-to-speech uses an OpenAI-compatible speech endpoint, which local TTS servers also offer. The user chooses among the models the server is configured with, from a Settings screen that lists a model's name, provider and whether its key is present and never takes a key or an endpoint, so adding a model stays a server-side configuration step.
