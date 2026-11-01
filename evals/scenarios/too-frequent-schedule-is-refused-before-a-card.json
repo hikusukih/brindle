@@ -30,6 +30,7 @@
       "status": "done",
       "schedules": 0,
       "crons": [],
+      "toolResultIncludes": ["Error: that would fire more than once every 15 minutes."],
       "eventTypes": ["message", "tool_call", "tool_result", "text"]
     }
   ]
