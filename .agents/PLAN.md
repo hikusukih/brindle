@@ -173,7 +173,9 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 7 — suggestions
 
-- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P4.2, P4.3, P3.3_
+- [ ] **P7.5** **Design note:** the suggestion run. It is the one run that reads across every scope, so the note settles: what it may read (briefs, purpose statements, state documents, run summaries) and what it must not (raw fetched text, which could plant a card); how its context is built and bounded; how a card is deduplicated and how a dismissal is remembered (by topic, not by wording); the daily cap and what counts as one day; and what accepting a credential-request card may and may not carry over from the text that inspired it. With eval scenarios, including a fixture page that tries to steer a suggestion toward a credential request. _needs P4.1, P6.1_
+
+- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P7.5, P4.2, P4.3, P3.3_
 
 - [ ] **P7.2** Accept and dismiss: accept becomes a run, goal, schedule or credential request; dismissed cards are remembered. _needs P7.1, P4.5, P6.5_
 
