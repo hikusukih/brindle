@@ -167,6 +167,27 @@ export function createApp({ db, engine, models, artifacts, clientRoot }: AppOpti
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
   });
+  // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
+  // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
+  app.get("/api/artifacts/:id/file", (c) => {
+    const artifact = artifacts?.get(c.req.param("id"));
+    const bytes = artifact && artifacts?.bytes(artifact);
+    if (!artifact || !bytes) throw new HTTPException(404, { message: "No such artifact." });
+    const shownAsText = artifact.mime === "text/plain" || artifact.mime === "text/markdown";
+    const download = `attachment; filename="${
+      artifact.file
+        .split("/")
+        .pop()
+        ?.replace(/[^\w.-]/g, "_") ?? "artifact"
+    }"`;
+    return c.body(new Uint8Array(bytes), 200, {
+      // Text and Markdown go out as text/plain so no browser treats them as markup.
+      "content-type": shownAsText ? "text/plain; charset=utf-8" : `${artifact.mime}; charset=utf-8`,
+      "content-security-policy": "sandbox",
+      "x-content-type-options": "nosniff",
+      ...(shownAsText ? {} : { "content-disposition": download }),
+    });
+  });
   app.get("/api/channels/:id/artifacts", (c) => {
     const id = c.req.param("id");
     getChannel(db, id);

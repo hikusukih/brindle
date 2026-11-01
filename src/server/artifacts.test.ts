@@ -183,3 +183,50 @@ describe("deleting a channel over the API", () => {
     expect((await del(app, "nope", { deleteArtifacts: ["x"] })).status).toBe(404);
   });
 });
+
+describe("serving an artifact's file", () => {
+  const hostile = "<html><script>fetch('/api/channels')</script></html>";
+
+  function served() {
+    const { db, store } = setup();
+    const app = createApp({ db, artifacts: store });
+    const ch = createChannel(db, "Trip");
+    const make = (kind: string) => store.create({ title: "T", kind, content: hostile }, origin(ch.id));
+    return { app, make };
+  }
+
+  it("sends an HTML page sandboxed, unsniffed and as a download", async () => {
+    const { app, make } = served();
+    const res = await app.request(`/api/artifacts/${make("page").id}/file`);
+    expect(res.status).toBe(200);
+    expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
+    expect(await res.text()).toBe(hostile);
+  });
+
+  it("sends data and links as downloads too", async () => {
+    const { app, make } = served();
+    for (const kind of ["data", "link"]) {
+      const res = await app.request(`/api/artifacts/${make(kind).id}/file`);
+      expect(res.headers.get("content-disposition")).toMatch(/^attachment/);
+      expect(res.headers.get("content-security-policy")).toBe("sandbox");
+    }
+  });
+
+  it("shows plain text and Markdown as text, never as markup, and still sandboxed", async () => {
+    const { app, make } = served();
+    for (const kind of ["document", "code"]) {
+      const res = await app.request(`/api/artifacts/${make(kind).id}/file`);
+      expect(res.headers.get("content-type")).toMatch(/^text\/plain/);
+      expect(res.headers.get("content-disposition")).toBeNull();
+      expect(res.headers.get("content-security-policy")).toBe("sandbox");
+      expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    }
+  });
+
+  it("answers 404 for an artifact that does not exist", async () => {
+    const { app } = served();
+    expect((await app.request("/api/artifacts/nope/file")).status).toBe(404);
+  });
+});
