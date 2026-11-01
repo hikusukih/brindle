@@ -23,6 +23,8 @@ export type Tool = {
   effect: EffectLevel;
   /** Cap on what goes back to the model; the engine's global cap still applies. Defaults to 4,000. */
   maxResultTokens?: number;
+  /** Checks the arguments beyond their shape, so a bad call is sent back to the model before any approval card is shown. Returns the problem, or null. */
+  precheck?: (args: Record<string, unknown>, ctx: { scope: ToolContext["scope"] }) => string | null;
   /** One line for the approval card, derived from the arguments. */
   describeCall?: (args: Record<string, unknown>) => string;
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>;

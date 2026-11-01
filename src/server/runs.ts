@@ -423,7 +423,7 @@ export class RunEngine {
         const checked = calls.map((call) => {
           const tool = this.tools.get(call.name);
           if (!tool) return { call, problem: `Error: no tool named ${call.name} is available.` };
-          const invalid = validateArguments(tool, call.arguments);
+          const invalid = validateArguments(tool, call.arguments) ?? tool.precheck?.(call.arguments, { scope });
           if (invalid) return { call, tool, problem: `Error: invalid arguments: ${invalid}.` };
           return { call, tool, ask: needsApproval(tool, call, scope) };
         });

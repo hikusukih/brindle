@@ -142,7 +142,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4_
 
-- [ ] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
+- [x] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
 
 - [ ] **P4.6** Goal templates behind the category buttons. _needs P4.3a_
 

@@ -74,6 +74,21 @@ export class Scheduler {
     return row;
   }
 
+  /** The next occurrences of an expression in the user's zone, for showing before anything is created. */
+  upcoming(cron: string, count: number, from = new Date()): Date[] {
+    const found: Date[] = [];
+    let at = from;
+    for (let i = 0; i < count; i++) {
+      at = this.after(cron, at);
+      found.push(at);
+    }
+    return found;
+  }
+
+  get timeZone(): string {
+    return this.options.timeZone;
+  }
+
   /** Disabling stops new occurrences; enabling picks up from the next one after now, never from the time it was off. */
   setEnabled(scheduleId: string, enabled: boolean, now = new Date()) {
     const schedule = this.db.select().from(schedules).where(eq(schedules.id, scheduleId)).get();
