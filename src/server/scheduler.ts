@@ -46,6 +46,12 @@ export class Scheduler {
     this.pollMillis = options.pollMillis ?? 30_000;
     this.graceMillis = options.graceMillis ?? 6 * hour;
     this.maxConcurrent = options.maxConcurrent ?? 2;
+    // A bad zone would otherwise fail every schedule on every poll with an error that doesn't name it.
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone: options.timeZone });
+    } catch {
+      throw new SchedulerError(`"${options.timeZone}" is not a time zone I know.`);
+    }
   }
 
   createSchedule(
@@ -109,7 +115,14 @@ export class Scheduler {
 
   start() {
     this.stop();
-    this.timer = setInterval(() => this.tick(), this.pollMillis);
+    // An exception escaping a timer ends the process; a failed poll is logged and the next one tries again.
+    this.timer = setInterval(() => {
+      try {
+        this.tick();
+      } catch (error) {
+        console.error(`Scheduler poll failed: ${(error as Error).message}`);
+      }
+    }, this.pollMillis);
     this.timer.unref();
   }
 
@@ -158,7 +171,7 @@ export class Scheduler {
     }
     if (at <= now) {
       console.warn(
-        `Schedule ${schedule.id}: more than 10,000 occurrences were missed; the earliest ones are not logged.`,
+        `Schedule ${schedule.id}: more than 10,000 occurrences were missed; the latest ones are not logged.`,
       );
     }
     const last = occurrences.at(-1) as Date;
@@ -217,19 +230,41 @@ export class Scheduler {
         this.mark(fire.id, "skipped_busy", stamp);
         continue;
       }
-      if (inFlight >= this.maxConcurrent || claimed.has(schedule.goalId) || this.hooks.goalBusy(schedule.goalId))
+      if (inFlight >= this.maxConcurrent || claimed.has(schedule.goalId)) continue;
+      let busy: boolean;
+      try {
+        busy = this.hooks.goalBusy(schedule.goalId);
+      } catch (error) {
+        // Can't tell, so leave it waiting; the grace window still bounds how long.
+        console.error(`Fire ${fire.id} left waiting: ${(error as Error).message}`);
         continue;
+      }
+      if (busy) continue;
       let runId = "";
-      this.db.transaction((tx) => {
-        runId = this.hooks.prepareRun(schedule, fire);
-        tx.update(scheduleFires)
-          .set({ state: "started", runId, updatedAt: stamp })
-          .where(eq(scheduleFires.id, fire.id))
-          .run();
-      });
+      try {
+        this.db.transaction((tx) => {
+          runId = this.hooks.prepareRun(schedule, fire);
+          tx.update(scheduleFires)
+            .set({ state: "started", runId, updatedAt: stamp })
+            .where(eq(scheduleFires.id, fire.id))
+            .run();
+        });
+      } catch (error) {
+        // Recorded, not retried, as recover() does: a run that fails to prepare would fail again every poll.
+        console.error(`Fire ${fire.id} failed to start: ${(error as Error).message}`);
+        this.mark(fire.id, "failed_to_start", stamp);
+        continue;
+      }
       claimed.add(schedule.goalId);
       inFlight++;
-      this.hooks.beginRun(runId);
+      try {
+        this.hooks.beginRun(runId);
+      } catch (error) {
+        // The run row exists but never began; recording it now saves waiting for recover() at the next restart.
+        console.error(`Fire ${fire.id} failed to start: ${(error as Error).message}`);
+        this.mark(fire.id, "failed_to_start", stamp);
+        inFlight--;
+      }
     }
   }
 

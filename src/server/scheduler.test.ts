@@ -32,7 +32,7 @@ function setup(options: Partial<SchedulerOptions> = {}, existing?: ReturnType<ty
     goalBusy: (goalId) => busy.has(goalId),
   };
   const make = () => new Scheduler(db, hooks, { timeZone: "America/New_York", ...options });
-  return { db, scheduler: make(), make, begun, busy };
+  return { db, scheduler: make(), make, hooks, begun, busy };
 }
 
 const states = (s: Scheduler) => s.log().map((f) => `${f.dueAt.slice(0, 16)} ${f.state}`);
@@ -194,13 +194,39 @@ describe("scheduler", () => {
     expect(states(scheduler)).toEqual(["2026-10-28T10:30 skipped_disabled"]);
   });
 
-  it("one schedule with an unreadable time zone does not stop the others or the poll", () => {
+  it("one schedule with an unreadable cron expression does not stop the others or the poll", () => {
     const { db, scheduler, begun } = setup();
     scheduler.createSchedule({ goalId: "bad", cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));
     scheduler.createSchedule({ goalId: "good", cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));
     db.update(schedules).set({ cron: "not a cron" }).where(eq(schedules.goalId, "bad")).run();
     expect(() => scheduler.tick(at("2026-10-28T10:30:05Z"))).not.toThrow();
     expect(begun).toHaveLength(1);
+  });
+
+  it("refuses a time zone it doesn't know when it is built", () => {
+    expect(() => setup({ timeZone: "Mars/Olympus_Mons" })).toThrow(SchedulerError);
+  });
+
+  it("a hook that throws does not escape the poll; a run that fails to prepare or begin is recorded, not retried", () => {
+    const { db, scheduler, hooks, begun } = setup();
+    scheduler.createSchedule({ goalId: "g", cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));
+    const failing = (hook: keyof SchedulerHooks) => {
+      const thrower = () => {
+        throw new Error(hook);
+      };
+      return new Scheduler(db, { ...hooks, [hook]: thrower }, { timeZone: "America/New_York" });
+    };
+    // goalBusy throwing leaves the fire waiting.
+    expect(() => failing("goalBusy").tick(at("2026-10-28T10:30:05Z"))).not.toThrow();
+    expect(states(scheduler)).toEqual(["2026-10-28T10:30 waiting"]);
+    // prepareRun throwing records it and doesn't retry.
+    expect(() => failing("prepareRun").tick(at("2026-10-28T10:30:35Z"))).not.toThrow();
+    expect(states(scheduler)).toEqual(["2026-10-28T10:30 failed_to_start"]);
+    scheduler.tick(at("2026-10-28T10:31:05Z"));
+    expect(begun).toHaveLength(0);
+    // beginRun throwing records the next day's fire the same way.
+    expect(() => failing("beginRun").tick(at("2026-10-29T10:30:05Z"))).not.toThrow();
+    expect(states(scheduler)).toEqual(["2026-10-28T10:30 failed_to_start", "2026-10-29T10:30 failed_to_start"]);
   });
 
   it("refuses an expression it can't read", () => {
