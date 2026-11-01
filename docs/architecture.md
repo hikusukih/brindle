@@ -94,7 +94,7 @@ More tools plug in over **MCP**. Handing whole external agents (coding agents an
 
 ## Models
 
-The model is pluggable behind one adapter contract: send messages and tool definitions, get back a stream of text and tool calls. Adapters: OpenAI-compatible chat completions (covers local servers such as llama.cpp, ollama and vLLM, plus most hosted APIs) and the Anthropic Messages API. Different scopes can use different models, so a cheap model can run watchers while a strong one handles conversation. Text-to-speech uses an OpenAI-compatible speech endpoint, which local TTS servers also offer.
+The model is pluggable behind one adapter contract: send messages and tool definitions, get back a stream of text and tool calls. Adapters: OpenAI-compatible chat completions (covers local servers such as llama.cpp, ollama and vLLM, plus most hosted APIs) and the Anthropic Messages API. Different scopes can use different models, so a cheap model can run watchers while a strong one handles conversation. Text-to-speech uses an OpenAI-compatible speech endpoint, which local TTS servers also offer. The user chooses among the models the server is configured with, from a Settings screen that lists a model's name, provider and whether its key is present and never takes a key or an endpoint, so adding a model stays a server-side configuration step.
 
 ## Key manager
 
