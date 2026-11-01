@@ -14,7 +14,7 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.startsWith("/api/channels")
+        url.startsWith("/api/channels") || url.startsWith("/api/artifacts")
           ? Response.json([])
           : Response.json({ message: "Hello from Brindle.", since: "2026-01-02T03:04:05.000Z" }),
       ),
@@ -36,7 +36,7 @@ describe("App", () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(async (url: string) =>
-        url.startsWith("/api/channels")
+        url.startsWith("/api/channels") || url.startsWith("/api/artifacts")
           ? Response.json([])
           : Response.json({ message: "Hello from Brindle.", since: "2026-01-02T03:04:05.000Z" }),
       ),

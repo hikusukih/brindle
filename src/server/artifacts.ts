@@ -88,8 +88,26 @@ export class ArtifactStore {
     return row;
   }
 
-  list(): Artifact[] {
-    return this.db.select().from(artifacts).orderBy(desc(artifacts.createdAt)).all();
+  /** Newest first, with the channel a channel-scoped artifact came from marked live or gone, so the gallery can link or say so. */
+  list(filter: { kind?: string; scope?: string } = {}): (Artifact & { scopeLive: boolean })[] {
+    const where = and(
+      filter.kind ? eq(artifacts.kind, filter.kind) : undefined,
+      filter.scope ? eq(artifacts.scope, filter.scope) : undefined,
+    );
+    const live = new Set(
+      this.db
+        .select({ id: channels.id })
+        .from(channels)
+        .all()
+        .map((c) => c.id),
+    );
+    return this.db
+      .select()
+      .from(artifacts)
+      .where(where)
+      .orderBy(desc(artifacts.createdAt))
+      .all()
+      .map((a) => ({ ...a, scopeLive: a.scope === "channel" && live.has(a.scopeId) }));
   }
 
   /** Newest first. The text matches a title or the content, ignoring case; a file that cannot be read just doesn't match on content. */
