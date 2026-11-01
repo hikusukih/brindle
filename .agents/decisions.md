@@ -4,7 +4,7 @@ How agents are managed here: sessions, the plan, scheduling. Product decisions a
 
 ## Open
 
-None.
+- **Migration numbers collide between open box PRs.** Drizzle numbers migrations in order (`0003_...`), so two box PRs that change the schema in parallel each pick the next number and the second to merge conflicts in `drizzle/meta/_journal.json`, in the snapshot of that number and in `src/server/db/schema.ts`. It happened in the run that filed this: P4.2 (#62) wrote 0003 and had to be renumbered to 0006 after P2.4 and others took 0003 to 0005, and P4.4 (#88) wrote 0005 and went to 0006 the same afternoon, so whichever of those merges next will collide again. The fix each time was the same: keep both sides of `schema.ts`, delete the branch's own migration SQL, take `main`'s journal and snapshots, and run `npx drizzle-kit generate` again. Recommend writing exactly that into `CLAUDE.md`'s steps for merging `main` into a box branch (the user's edit, since sessions may not change `CLAUDE.md`), so an unattended session does not have to rediscover it, and adding nothing else: a lock or a reserved-number scheme would add process for a conflict that takes a minute to resolve and that only the second merger sees.
 
 ## Settled
 
