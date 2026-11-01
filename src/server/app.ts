@@ -21,6 +21,7 @@ import { appMeta } from "./db/schema.js";
 import {
   archiveGoal,
   briefHistory,
+  cancelGoalRuns,
   createGoal,
   deleteGoal,
   editGoal,
@@ -32,6 +33,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
+import type { Scheduler } from "./scheduler.js";
 import { ScopeStatementError } from "./scope-statements.js";
 
 export type Greeting = {
@@ -47,11 +49,13 @@ type AppOptions = {
   models?: { defaultSpec?: string; validate: (spec: string) => void };
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
+  // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
+  scheduler?: Scheduler;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
 };
 
-export function createApp({ db, engine, models, artifacts, clientRoot }: AppOptions) {
+export function createApp({ db, engine, models, artifacts, scheduler, clientRoot }: AppOptions) {
   const app = new Hono();
 
   app.get("/api/greeting", (c) => {
@@ -196,10 +200,17 @@ export function createApp({ db, engine, models, artifacts, clientRoot }: AppOpti
   app.post("/api/goals/:id/brief-versions/:version/restore", (c) =>
     c.json(restoreBrief(db, c.req.param("id"), Number(c.req.param("version")))),
   );
-  app.post("/api/goals/:id/archive", (c) => c.json(archiveGoal(db, c.req.param("id"))));
-  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"))));
-  app.delete("/api/goals/:id", (c) => {
-    deleteGoal(db, c.req.param("id"));
+  // A run going in the goal's channel is cancelled first, so it cannot write to a goal that is being archived or removed.
+  app.post("/api/goals/:id/archive", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    return c.json(archiveGoal(db, id, new Date(), scheduler));
+  });
+  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"), new Date(), scheduler)));
+  app.delete("/api/goals/:id", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    deleteGoal(db, id, scheduler);
     return c.body(null, 204);
   });
 

@@ -128,7 +128,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.3a** The Goals screen: list each goal with its next scheduled run, and the form to create and edit one. _needs P4.3, P4.2, P1.1_
 
-- [ ] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each, and the goals note's archive and restore and delete eval scenarios. _needs P4.2, P4.3_
+- [x] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each, and the goals note's archive and restore and delete eval scenarios. _needs P4.2, P4.3_
 
 - [ ] **P4.12** Runs gain a goal scope and a schedule trigger; the server builds the scheduler with hooks that create a goal-scoped run from a fire's task prompt and report a goal as busy while it has a run going, and starts the poll and `recover()` at startup, reading cron in the user's time zone from P4.22. Scheduled runs get the 12-hour approval timeout, ending as "approval not given". Eval scenarios from the goals note for room to run. _needs P4.2, P4.3, P4.22_
 
