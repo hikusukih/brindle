@@ -15,7 +15,7 @@ There is no index: the folders are the plan. One box per file, so PRs that add, 
 - Each box is a file in its phase folder named for its ID and a few words, such as `P2.4-artifacts-storage-and-tool.md`. The words are only a hint: a reword doesn't rename the file, and the ID is what counts.
 - A box's file holds one line: the ID in bold, the box's text, and its needs at the end.
 - Checking a box means moving its file into the phase's `done/` folder (`git mv`), in the box's own PR. A file in `done/` is checked; any other box is unchecked. So the open boxes of a phase are the files directly in its folder.
-- To read the open boxes in the plan's order: `for d in $(ls -d .agents/plan/P*/ | sort -V) .agents/plan/A*/; do ls "$d"*.md 2>/dev/null | sort -V | xargs -r cat; done`. Use `"$d"done/*.md` for the checked ones.
+- To read the open boxes in the plan's order: `for d in $(ls -d .agents/plan/P*/ | sort -V) .agents/plan/A*/; do (cd "$d" && ls *.md 2>/dev/null | sort -t- -k1,1V | xargs -r cat); done`. It sorts on the ID alone, since `sort -V` on whole names puts P2.4a before P2.4. Use `cd "$d"done` for the checked ones.
 
 ## Box IDs and needs
 
