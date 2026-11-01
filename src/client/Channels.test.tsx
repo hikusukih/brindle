@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel, Run } from "./api";
 import { ChannelsScreen } from "./Channels";
 
+// The real stream reads over fetch; here the view gets the fake below, handed in through a global because vi.mock is hoisted.
+vi.mock("./events", () => ({
+  get AuthedEventSource() {
+    return (globalThis as unknown as { FakeSource: unknown }).FakeSource;
+  },
+}));
+
 const stamp = "2026-01-02T03:04:05.000Z";
 const channel = (id: string, name: string, archivedAt: string | null = null): Channel => ({
   id,
@@ -14,7 +21,7 @@ const channel = (id: string, name: string, archivedAt: string | null = null): Ch
   model: null,
 });
 
-// Stands in for the browser's EventSource; a test pushes events through the most recent instance.
+// Stands in for the authorized event stream; a test pushes events through the most recent instance.
 class FakeSource {
   static last: FakeSource | undefined;
   static CLOSED = 2;
@@ -53,7 +60,7 @@ function stubFetch(routes: Record<string, Handler>) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("EventSource", FakeSource);
+  vi.stubGlobal("FakeSource", FakeSource);
   vi.stubGlobal(
     "confirm",
     vi.fn(() => true),

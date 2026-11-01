@@ -20,9 +20,9 @@ docker run -d --name brindle --restart unless-stopped \
 
 Open `http://127.0.0.1:8787`. The page shows a greeting from the server and the time it first started.
 
-- Brindle has no login yet. Inside the container it listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only. Don't publish it more widely until authentication lands.
+- Every `/api` route except `/api/health` needs a login token, sent in an `Authorization: Bearer` header (never a cookie). Set `BRINDLE_TOKEN` (at least 16 characters) to choose it, for example `-e BRINDLE_TOKEN=...` on `docker run`. Otherwise the first start generates one and prints it once in the server output (`docker logs brindle`); only its hash is kept, so if you lose it, set `BRINDLE_TOKEN` to replace it. The page asks for the token once and keeps it for that browser tab's session. The server compares tokens in constant time. Inside the container the server listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only; put it behind HTTPS before exposing it further, since the token travels with every request.
 - Everything Brindle keeps lives in the `brindle-data` volume, mounted at `/data`. Removing the container keeps it; `docker volume rm brindle-data` deletes it.
-- To upgrade, pull the new code, rebuild the image, then `docker rm -f brindle` and run the same `docker run` again. Database migrations apply on startup.
+- To upgrade, pull the new code, rebuild the image, then `docker rm -f brindle` and run the same `docker run` again. Database migrations apply on startup. An install from before logins existed gets its token on the first start of the new version: it is printed once in the server output, or set `BRINDLE_TOKEN` to choose it.
 - The image runs as an unprivileged user and needs no compiler: the SQLite driver's prebuilt binaries cover amd64 and arm64.
 
 ### Moving an install from Bridle
