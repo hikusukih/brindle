@@ -29,7 +29,7 @@ Sessions are short; they often run on whatever usage is left at the end of a win
 
 If a box turns out too big for one session, split it within its PR: the part being landed keeps the ID and its file, the rest get new files with suffixed IDs (`P1.2a`, `P1.2b`) that need `P1.2` unless they truly don't. Never renumber or reuse an ID.
 
-Branches from before the plan was split into one file per box still edit `.agents/PLAN.md`. Merging `main` into one conflicts on that file: delete it (`git rm .agents/PLAN.md`) and make the branch's change in the box files instead, checking a box by moving its file into `done/` and adding a new box as its own file. This paragraph can go once no open branch predates the split.
+Branches from before the plan was split into one file per box still edit `.agents/PLAN.md`. Merging `main` into one conflicts on that file: delete it (`git rm .agents/PLAN.md`) and make the branch's change in the box files instead, checking a box by moving its file into `done/` and adding a new box as its own file. Open `[plan]` PRs from before the split get the same treatment from box P0.7. This paragraph can go once no open branch predates the split.
 
 ## Addressing reviews
 
@@ -68,7 +68,7 @@ The plan changes through proposal PRs, kept apart from box work, so the user can
   ```
 
   Open it ready, not draft, titled `[plan] <summary>`. Its description says what turned it up (which box, what was seen) and what it would change. Then replace the line in the box PR's Proposals list with a link to it.
-- **What a proposal may change:** the box files under `.agents/plan/`, `docs/decisions.md`, `.agents/decisions.md`, `docs/architecture.md` and process design notes under `.agents/design/`, never code. It can add boxes, reword or move unclaimed ones, change needs, or add an open question with a recommendation. It never checks a box, never deletes one (it proposes dropping it as a question in a decisions file instead), never renumbers, and leaves claimed boxes alone (the suggestion goes in `docs/decisions.md`, or `.agents/decisions.md` for process). A new feature that changes the design gets a line in `docs/architecture.md`; a big one gets a **design note** box rather than a design.
+- **What a proposal may change:** the box files under `.agents/plan/`, `docs/decisions.md`, `.agents/decisions.md`, `docs/architecture.md` and process design notes under `.agents/design/`, never code. It can add boxes, reword unclaimed ones or move them to another phase's folder, change needs, or add an open question with a recommendation. It never checks a box, never deletes one (it proposes dropping it as a question in a decisions file instead), never renumbers, and leaves claimed boxes alone (the suggestion goes in `docs/decisions.md`, or `.agents/decisions.md` for process). A new feature that changes the design gets a line in `docs/architecture.md`; a big one gets a **design note** box rather than a design.
 - **New box IDs** take the next unused number in their phase, counting `main` and every open box and proposal branch, so two open proposals don't hand out the same ID. Right before pushing, for phase 2:
 
   ```
