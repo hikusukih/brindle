@@ -81,7 +81,7 @@ A suggestion run, at most daily, reads goal briefs and states, channel purpose s
 
 ## What the model is told
 
-Every request starts with fixed harness instructions that describe Brindle to the model: its surfaces (channels, goals, the feed, artifacts, reports), its tools, and how to behave. The run's place follows the scope statement: which channel or goal it is in and what kind of run it is, such as a conversation, a goal run or a suggestion run. The instructions are the same for every run, so the model server's prompt cache stays useful; the place changes per scope and so comes after them. A user-written Soul and the Home channel's directory of the instance sit in layers of their own. The context design note (`docs/design/context.md`) says where each layer goes and how big it may be.
+Every request starts with fixed harness instructions that describe Brindle to the model: its surfaces (channels, goals, the feed, artifacts, reports), its tools, and how to behave. The run's place says which channel or goal it is in and what kind of run it is, such as a conversation, a goal run or a suggestion run. The instructions are the same for every run, so the model server's prompt cache stays useful, and the place comes after them. The kind of run can change from one run to the next in the same scope, so which parts of the place sit with the scope statement and which come later in the prompt is for the P3.12 note to settle. A user-written Soul and the Home channel's directory of the instance sit in layers of their own. The context design note (`docs/design/context.md`) says where each layer goes and how big it may be.
 
 ## Tools
 
