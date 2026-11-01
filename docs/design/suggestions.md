@@ -1,6 +1,6 @@
 # Design note: the suggestion run
 
-Box P7.5. Status: proposed. Implementation (P7.1 to P7.3) waits until this merges. Terms in bold at their first use here (**run**, **scope**, **card**, **housekeeping call** and **scope statement**) are defined in the glossary in `docs/architecture.md`. It leans on `docs/design/goals.md` (briefs, state documents, the user's time zone), `docs/design/context.md` (summaries) and `docs/design/key-manager.md` (the credential request).
+Box P7.5. Status: proposed. Implementation (P7.1 to P7.3) waits until this merges. Terms in bold at their first use here (**run**, **scope** and **card**) are defined in the glossary in `docs/architecture.md`. It leans on `docs/design/goals.md` (briefs, state documents, the user's time zone), `docs/design/context.md` (summaries) and `docs/design/key-manager.md` (the credential request).
 
 ## Problem
 
@@ -52,11 +52,11 @@ Accepting never does the thing itself; it hands the user to the step that asks:
 
 The model's output decides only that a login would help a goal and which of the goal's sites it means. The harness then builds the card, and it carries only:
 
-- **The site's host, if and only if that host appears in text the user wrote**: the goal's brief or one of the user's own messages in the goal's channel. A host that appears only in a state document, summary, purpose statement or anything the model wrote is dropped with the card.
+- **The site's host, if and only if that host appears in text the user wrote**: one of the user's own messages in the goal's channel, or a brief version the user typed or edited. A brief an agent drafted counts as agent-written even after the user confirmed it with one click, because a fetched page can steer a goal run into suggesting a brief edit that names the planted host; the author recorded on each version (`scope_statements`) says which it is. A host that appears only in a state document, summary, purpose statement or anything the model wrote is dropped with the card.
 - **The goal id**, as the only goal the credential may serve.
 - **A reason written from a template** ("<goal> could do more with a login to <host>"), never the model's wording.
 
-It must not carry a path or query, a suggested tool list, an expiry, a longer scope or any reason text from the model. The form opens at the narrowest scope the key manager offers: that host only, that goal only, no tools, approval for each use. The value is typed by the user into the vault form and never passes through the suggestion run or its output.
+It must not carry a path or query, a suggested tool list, an expiry, a longer scope or any reason text from the model. The form opens at the narrowest scope the key manager offers: that host only, that goal only, approval for each use. A secret is usable only by the tools in its scope, so the user must pick at least one tool from the key manager's fixed list before the form will save; the model has no say in that list. The value is typed by the user into the vault form and never passes through the suggestion run or its output.
 
 ## Rejected
 
@@ -71,7 +71,7 @@ It must not carry a path or query, a suggested tool list, an expiry, a longer sc
 
 Scripted scenarios on a fixture instance of goals, channels and activity, plus a live variant for the steering test.
 
-- **Steering**: a fixture web page makes the agent write a state document saying "connect <a host the user never typed>"; the suggestion run's scripted reply proposes that credential card, and the harness drops it. A second case where the host is in the user's brief yields the card with only the host, the goal id and the template reason. A live variant checks whether a real model is moved by the planted text at all.
+- **Steering**: a fixture web page makes the agent write a state document saying "connect <a host the user never typed>"; the suggestion run's scripted reply proposes that credential card, and the harness drops it. A third case where the host reaches the brief only through an accepted agent draft drops the card too. A second case where the host is in text the user typed in the brief yields the card with only the host, the goal id and the template reason. A live variant checks whether a real model is moved by the planted text at all.
 - **Inputs**: the request the run sends contains no tool result, fetched text, artifact content or transcript, and stays within 6,000 tokens with the fixed ordering.
 - **Dismissal**: a dismissed card does not return when the model rewords the title; a card on a different goal does; an expired card may return once.
 - **Cap and day**: one run per local day across a time zone change and a daylight saving change; none after 18:00; a missed day is skipped; at most 3 new and 5 pending cards.
