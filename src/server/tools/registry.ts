@@ -11,6 +11,8 @@ export type ToolContext = {
   scope: { kind: "channel"; id: string };
   signal: AbortSignal;
   log: (message: string) => void;
+  /** Adds an event to the run's stream, such as the artifact a tool just made. */
+  emit: (type: "artifact", data: Record<string, unknown>) => void;
 };
 
 export type Tool = {
