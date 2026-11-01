@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Greeting } from "../server/app";
+import { ArtifactsScreen } from "./Artifacts";
 import { api } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { LoginGate } from "./Login";
@@ -76,10 +77,12 @@ function Shell() {
         </div>
       </nav>
       <main
-        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
+        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
       >
         {screen === "channels" ? (
           <ChannelsScreen />
+        ) : screen === "artifacts" ? (
+          <ArtifactsScreen empty={active.empty} />
         ) : (
           <>
             <h1 className="text-2xl font-semibold">{active.label}</h1>

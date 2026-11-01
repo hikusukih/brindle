@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
-import { ArtifactStore } from "./artifacts.js";
+import { type Artifact, ArtifactStore } from "./artifacts.js";
 import { createChannel, deleteChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { artifacts, events } from "./db/schema.js";
@@ -103,6 +103,31 @@ describe("create_artifact in a run", () => {
     }
     const ev = db.select().from(events).where(eq(events.runId, run.id)).all();
     expect(ev.some((e) => e.type === "artifact" && JSON.parse(e.data).id === art?.id)).toBe(true);
+  });
+});
+
+describe("the gallery listing", () => {
+  it("filters by kind and scope, newest first, and marks whether the source channel still exists", async () => {
+    const { db, store } = setup();
+    const app = createApp({ db, artifacts: store });
+    const ch = createChannel(db, "Gone soon");
+    const keep = createChannel(db, "Kept");
+    const t = (n: number) => new Date(2026, 0, n);
+    store.create({ title: "old", kind: "code", content: "x" }, origin(ch.id), t(1));
+    store.create({ title: "new", kind: "document", content: "x" }, origin(keep.id), t(2));
+    store.create({ title: "goal", kind: "document", content: "x" }, { scope: "goal", scopeId: "g1" }, t(3));
+    deleteChannel(db, ch.id);
+    const get = async (q = "") =>
+      (await (await app.request(`/api/artifacts${q}`)).json()) as (Artifact & { scopeLive: boolean })[];
+    expect((await get()).map((a) => a.title)).toEqual(["goal", "new", "old"]);
+    expect((await get("?kind=document")).map((a) => a.title)).toEqual(["goal", "new"]);
+    expect((await get("?scope=channel")).map((a) => [a.title, a.scopeLive])).toEqual([
+      ["new", true],
+      ["old", false],
+    ]);
+    expect((await get("?scope=channel&kind=code"))[0]?.scopeName).toBe("Gone soon");
+    expect((await app.request("/api/artifacts?kind=nope")).status).toBe(400);
+    expect((await app.request("/api/artifacts?scope=nope")).status).toBe(400);
   });
 });
 

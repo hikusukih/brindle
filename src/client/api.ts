@@ -40,3 +40,19 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
   }
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
+
+export type Artifact = {
+  id: string;
+  title: string;
+  kind: "document" | "code" | "data" | "page" | "link";
+  scope: "channel" | "goal";
+  scopeId: string;
+  /** The scope's name when the artifact was made. */
+  scopeName: string;
+  runId: string | null;
+  mime: string;
+  size: number;
+  createdAt: string;
+  /** True while the channel that made it still exists. */
+  scopeLive: boolean;
+};
