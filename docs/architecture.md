@@ -10,17 +10,18 @@ Each document puts these terms in bold at their first use and uses them only in 
 
 - **Run:** one unit of agent work: a trigger, a scope, and the loop of steps that follows until the agent finishes, a limit stops it, or it fails. A user message and everything the agent does to answer it is one run. A run waiting on an approval is still the same run. The step, token and time limits apply per run.
 - **Trigger:** what starts a run: a user message, a schedule firing, an accepted suggestion, or another run handing off.
+- **Link:** a connection the user makes between a goal and a channel other than the goal's own, which lets runs in that channel read and write the goal's state.
 - **Scope:** the channel or goal a run belongs to. It decides what context the run gets and where its output goes. The suggestion run is the one exception: it reads across all of them and its output is suggestion cards.
 - **Step:** one model call within a run, together with the tool calls it asks for.
 - **Request:** what one step sends to the model: the assembled context and the tool definitions. A run sends one request per step, so context assembly builds requests, not runs.
-- **Housekeeping call:** a model call the harness makes for itself, outside any run: drafting a purpose statement, compaction, a drift check, a branch seed. It has limits of its own and counts against no run.
+- **Housekeeping call:** a model call the harness makes for itself, outside any run: drafting a purpose statement, compaction, a drift check, a branch seed, a goal draft. It has limits of its own and counts against no run.
 - **Card:** an item shown to the user that asks for a decision and records the answer: approve or decline a tool call, accept or dismiss a suggestion, confirm a drafted goal, or fill in a form such as a credential request. Text that only goes into the model's context is never a card.
 - **Scope statement:** the short text sent with every run to say what its scope is for: a channel's purpose statement, drafted by a housekeeping call and editable by the user, or a goal's brief, written by the user. They are one type in code (`ScopeStatement`), versioned in one table (`scope_statements`). Older notes and PRs call the purpose statement a purpose card.
 - "Turn" is not used in the docs. In the code and the scripted model's fixtures a turn is one model response, which is a step; in prose, say step, or "message" for a single message.
 
 ## Guiding principle: calm
 
-The agent works on the user's behalf and reports when there is something worth reporting. Scheduled work lands in the feed or a digest, not a ping. Notifications exist, and the user turns them on per goal or channel. Suggestions are capped and remember what was dismissed. A reply ends when it is done, without a list of other things the agent could do.
+Calm guides the architecture and sets the defaults; it does not limit what the user wants. By default the agent works on the user's behalf and reports when there is something worth reporting. Scheduled work lands in the feed or a digest, not a ping. Notifications exist, and the user turns them on per goal or channel. Suggestions are capped and remember what was dismissed. A reply ends when it is done, without a list of other things the agent could do. A user who wants a chattier agent, more offers or more notifications can have them, through Settings, and nothing in the harness refuses that; what the harness never does is start from the louder setting.
 
 ## The run
 
@@ -53,9 +54,9 @@ A goal is an ongoing project: "learn Rust", "keep me posted on shows at a local 
 - **A brief:** what the goal is and what success looks like. User-written, agent-assisted.
 - **A state document:** the goal's working memory, owned by the goal and versioned. For "learn Rust" it holds the curriculum and progress through it; for a venue watcher, the shows already reported. The agent reads it on every goal run and changes it through a tool that records each change as a new version. **The state document is also an artifact:** it shows in the artifacts gallery and can be opened, read and edited like any other, so what the agent keeps under the hood is never hidden.
 - **Schedules:** zero or more cron-like entries, each a task prompt plus a destination. "Read these sources at 8:00 and 20:00, add new items to the feed." "At 6:30, write and voice a brief, save it as an audio artifact, put it in the digest." Users describe a schedule in plain words; the agent proposes the cron expression and the user confirms it.
-- **A channel:** where the user talks to the goal and where goal runs post by default.
+- **A channel:** the goal's own, created with it, where the user talks to the goal and where goal runs post by default. A goal can also be **linked** to other channels, so it can be discussed where it comes up: with channels for Scheduling, My Band and The Kids, the goal "Prepare for the Show" can be linked to the first two. A link is made by the user, or accepted from an offer, and ends in one click. The runs of a linked channel see the goal's brief and can read and edit its state document, each edit recording the channel and run and open to revert; a channel that is not linked can do none of that. A goal is never without a channel: its own channel cannot be unlinked, archived or deleted apart from the goal.
 
-The category buttons on the Goals screen (interests, relationships, finance, career, and so on) are prompt templates that draft a goal for the user to edit before saving.
+The category buttons on the Goals screen (interests, relationships, finance, career, and so on) are prompt templates that draft a goal for the user to edit before saving. The screen also offers suggested goals as buttons and an open text box, which is the whole screen while there are no goals; the user's words go to a housekeeping call that drafts a goal into the same edit form, and nothing is created until the user confirms it.
 
 ## Feed
 
@@ -103,7 +104,7 @@ Goals that act on the user's behalf need logins and API keys. The key manager is
 
 ## Evals
 
-Harness quality is measured, not asserted. `evals/` holds scenarios replayed against the harness: compaction keeps the facts planted early in a long channel; "read this twice a day" becomes the right schedule; a goal's state document updates correctly after a lesson; injected pages fail to move secrets. CI runs every scenario against a scripted model, so the plumbing is checked on every PR. The same scenarios run against a real model on demand, which costs money and is done when a harness change could move the results.
+Harness quality is measured, not asserted. `evals/` holds scenarios replayed against the harness: compaction keeps the facts planted early in a long channel; "read this twice a day" becomes the right schedule; a goal's state document updates correctly after a lesson; injected pages fail to move secrets. CI runs every scenario against a scripted model, so the plumbing is checked on every PR. The same scenarios run against a real model on demand, which costs money and is done when a harness change could move the results. A separate model-boundary suite checks how Brindle meets a model server: context windows, length errors, cache reuse and time limits. It runs in CI against a fake server and a tiny real model, and by hand against the user's own server, where it also measures the speeds the per-model limits are tuned from.
 
 ## Storage and delivery
 

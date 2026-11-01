@@ -2,6 +2,17 @@
 
 The design is `docs/design/slots.md`: only the clock starts sessions, and the run window is the cron expression. The expressions use the time zone set in the task configuration, which this repo does not record.
 
+## Installed now
+
+The slots tasks below are not installed yet. What runs today, each with its prompt file in this folder:
+
+- brindle daily box (`daily-box-prompt.md`): every morning, working boxes for up to 4 hours.
+- brindle planning (`planning-prompt.md`): once a day, after the daily box.
+- usage maximizer (`usage-maximizer-prompt.md`): Wednesday evening, working boxes until 23:30.
+- Brindle PR Review Task (`pr-review-prompt.md`): a GitHub trigger on PRs being opened, plus a daily run after the daily box that re-reviews PRs with new commits. The task editor offers no trigger for new pushes, and agents can't start a task made in the editor.
+
+When a task's prompt changes, change its file in the same PR, so the repo keeps the text to paste.
+
 ## Cron expressions
 
 - Box worker A, every day except Wednesday: `0 7-10 * * 0,1,2,4,5,6` (07:00 to 10:00 on the hour).
