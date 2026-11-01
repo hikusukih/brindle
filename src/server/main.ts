@@ -6,6 +6,7 @@ import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { openDatabase } from "./db/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
+import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { RunEngine } from "./runs.js";
 import { builtInTools } from "./tools/index.js";
@@ -27,7 +28,16 @@ const builtClient = fileURLToPath(new URL("../../dist/client", import.meta.url))
 // With no default model and none chosen for a channel, starting a run answers 503.
 const models = modelRegistry(process.env);
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const engine = new RunEngine(db, (spec) => models.resolve(spec), undefined, builtInTools(process.env, artifacts));
+const tools = builtInTools(process.env, artifacts);
+// Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
+const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
+for (const signal of ["SIGINT", "SIGTERM"] as const) {
+  process.on(signal, () => {
+    for (const c of mcpClients) c.close();
+    process.exit(0);
+  });
+}
+const engine = new RunEngine(db, (spec) => models.resolve(spec), undefined, tools);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
 const app = createApp({ db, engine, models, artifacts, clientRoot: existsSync(builtClient) ? builtClient : undefined });
