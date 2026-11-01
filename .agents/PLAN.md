@@ -43,6 +43,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P1.7** The Channels screen: list, create, rename, archive, restore and delete channels from the UI; a channel view that sends a message, streams the run's events and shows a failed run's error in place. _needs P1.2, P1.4, P1.8_
 
+- [ ] **P1.9** Channels in the side rail: on wide screens each channel is listed indented under the Channels heading (the Home channel first once it exists), and the heading still opens the Channels screen for archive, restore and delete; on narrow screens the Channels tab opens the list itself, since the bottom bar has no room for children. UI only, with tests. _needs P1.7_
+
 - [x] **P1.5** Acceptance: two channels with separate histories survive a server restart and a reload; a failed run shows its error in place and the channel keeps working. _needs P1.1, P1.4, P1.7, P1.8_
 
 - [x] **P1.6** **Review** of Phase 1. _needs P1.1, P1.2, P1.3, P1.4, P1.5, P1.7, P1.8_
@@ -63,7 +65,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P2.13** Serving artifacts safely: an endpoint that returns an artifact's file only with `Content-Security-Policy: sandbox`, `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` for every kind except plain text and Markdown (rendered by the client as text, never as HTML), so a `page` artifact written by the model, possibly from fetched web text, cannot run script on the app's origin or reach the app's API. With a test that an HTML artifact containing a script is served with those headers. _needs P2.4_
 
-- [ ] **P2.9** `find_artifacts` and `read_artifact`: `read` tools that let a run in any channel or goal list artifacts by title, kind and provenance, with a text match, and read one's content, cut by the usual result sizing. Artifact content comes back as tool-result data like a fetched page, since an artifact may hold text from the web. With an eval scenario where a run in one channel finds and uses an artifact made in another. _needs P2.4, P2.3_
+- [x] **P2.9** `find_artifacts` and `read_artifact`: `read` tools that let a run in any channel or goal list artifacts by title, kind and provenance, with a text match, and read one's content, cut by the usual result sizing. Artifact content comes back as tool-result data like a fetched page, since an artifact may hold text from the web. With an eval scenario where a run in one channel finds and uses an artifact made in another. _needs P2.4, P2.3_
 
 - [x] **P2.5** Evals: the `evals/` runner, one scenario format, CI running all scenarios against the scripted model, and a manual command to run them against a real model. _needs P1.4, P0.2_
 
@@ -107,25 +109,35 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P4.1** **Design note:** the goal model (brief, versioned state document, schedules, channel), how schedules are stored and fire, what happens to runs missed while the server was down, and concurrency limits. _needs P2.1_
 
+- [ ] **P4.13** **Design note:** goals link to other channels. A goal keeps its own channel, created with it, and can also be linked to others. A link is made only by the user (from the goal page, from a channel's header, by accepting an inline offer, or by confirming a goal drafted in a conversation) and ends in one click from either side. The note settles: the `goal_channels` table; the rule that no goal is ever without a channel, so a goal's own channel cannot be unlinked, archived or deleted apart from the goal (archive or delete the goal instead, and the dialog asks what becomes of its channel: keep it as an ordinary channel, or delete it), while any other link can be removed freely and deleting or archiving a linked channel only unlinks it; what a channel run gets from a linked goal (a one-line brief under a cap, read access to its state document, and write access through the state document's existing versioned edits, each recording the channel and run and open to a one-click revert), and that a channel that is not linked can do none of it; a schedule's destination being the goal's own channel or any linked channel, falling back to the goal's own channel, with a system report, when a linked one goes away; how the one-run-per-goal rule applies to goal runs only, with the state document's edit-conflict rules covering a channel run writing alongside one; and what the link offer looks like and how often it appears. Eval scenarios include a linked-channel write that is reverted, an unlinked channel that cannot write, a goal that cannot be left without a channel however its channels are archived, unlinked or deleted, and an injection scenario where a channel that fetched a hostile page writes to a linked goal's state. _needs P4.1_
+
 - [x] **P4.2** The scheduler: persisted cron-like entries, survives restarts without double-firing, applies the missed-run policy, and keeps a log of what fired. _needs P4.1, P1.4_
 
 - [x] **P4.3** Goals, server side: create, edit and archive a goal, and the goal's channel with its brief pinned. _needs P4.1, P1.2_
 
 - [ ] **P4.3a** The Goals screen: list each goal with its next scheduled run, and the form to create and edit one. _needs P4.3, P4.2, P1.1_
 
+- [ ] **P4.18** A goal's channel in the UI: the goal's channel view shows its brief pinned at the top; the channel list marks goal channels (the server returns the owning goal's id with each channel) and the Channels screen leaves rename, archive and delete on them to the goal, since the channels API now refuses those with 409 `goal_channel`; and deleting a goal asks about the artifacts its channel made, as deleting a channel does (keep all by default, delete all, or choose which), with the goal delete API taking the same list. _needs P4.3, P1.7, P2.4a_
+
 - [ ] **P4.4** The state document: `update_goal_state` with versions, shown as an artifact, readable and editable by the user, with history. _needs P4.3, P2.4_
+
+- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4_
 
 - [ ] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
 
 - [ ] **P4.6** Goal templates behind the category buttons. _needs P4.3a_
 
+- [ ] **P4.16** Add a goal from the Goals screen: suggested goals as buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) and a text box, which is the whole screen while there are no goals, where the user types or pastes what they want. Either sends the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form. The call has no tools and no scope, and nothing is created until the user confirms the form. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3a, P4.6_
+
 - [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.4, P4.5, P2.2_
 
 - [ ] **P4.9** `propose_goal`: from a conversation the model drafts a goal (title, brief, optionally a schedule) as a card the user edits and confirms before anything is created, never creating one itself; with an eval scenario where a chat about learning Rust yields a sensible draft. _needs P4.3, P4.5_
 
+- [ ] **P4.15** The link offer and linking from `propose_goal`: an inline, dismissible offer "Link this goal to this channel?" when a conversation keeps returning to a goal, which links nothing until it is accepted, and a goal drafted from a conversation (P4.9) linked to that channel once the user confirms it. _needs P4.14, P4.9_
+
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
-- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10_
+- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.18_
 
 ## Phase 5 — the feed
 
