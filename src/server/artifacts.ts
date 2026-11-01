@@ -115,6 +115,14 @@ export class ArtifactStore {
     return this.db.select().from(artifacts).where(eq(artifacts.id, id)).get();
   }
 
+  bytes(a: Artifact): Buffer | undefined {
+    try {
+      return readFileSync(join(this.dir, a.file));
+    } catch {
+      return undefined;
+    }
+  }
+
   content(a: Artifact): string | undefined {
     try {
       return readFileSync(join(this.dir, a.file), "utf8");
