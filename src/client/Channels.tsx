@@ -389,7 +389,7 @@ function ApprovalCard(props: {
 
 type Purpose = { current: { text: string; author: "user" | "agent"; confirmed: boolean; version: number } | null };
 
-/** The channel's purpose statement under its name: shown as a draft until the user has written or kept it, editable in place. */
+/** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
 function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
   const [purpose, setPurpose] = useState<Purpose | null>(null);
   const [editing, setEditing] = useState<string | null>(null);

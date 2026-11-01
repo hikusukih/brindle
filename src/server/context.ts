@@ -39,17 +39,23 @@ export type ContextReport = {
   model?: string;
   toolSet?: string;
   instructions?: string;
+  statement?: string;
   overflow: { layer: LayerName; detail: string }[];
 };
 
-export type Break = "emergency_drop" | "model_change" | "tool_set_change" | "instructions_change";
+export type Break =
+  | "emergency_drop"
+  | "model_change"
+  | "tool_set_change"
+  | "instructions_change"
+  | "scope_statement_change";
 
 /** A short fingerprint, so a report can tell whether the tool set or instructions changed without storing them twice. */
 export const fingerprint = (value: unknown) =>
   createHash("sha256").update(JSON.stringify(value)).digest("hex").slice(0, 16);
 
 /** The parts of the channel's previous request that decide whether this one starts the same way. */
-export type PreviousRequest = Pick<ContextReport, "firstRunId" | "model" | "toolSet" | "instructions">;
+export type PreviousRequest = Pick<ContextReport, "firstRunId" | "model" | "toolSet" | "instructions" | "statement">;
 
 export class ContextOverflow extends Error {
   constructor(readonly report: ContextReport) {
@@ -122,6 +128,8 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
     model: input.model,
     toolSet: input.toolSet,
     instructions: fingerprint(harnessInstructions),
+    // Always set, even with no statement, so the first draft shows up as a planned break rather than a stray miss.
+    statement: fingerprint(input.scopeStatement ?? null),
   };
   const prev = input.previous;
   // A report from before these fields existed has nothing to compare, so it is not counted as a break.
@@ -129,6 +137,9 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
   if (prev?.toolSet !== undefined && prev.toolSet !== report.toolSet) report.breaks.push("tool_set_change");
   if (prev?.instructions !== undefined && prev.instructions !== report.instructions)
     report.breaks.push("instructions_change");
+  // A draft, an edit or a restore changes layer 2, which docs/design/context.md lists as a planned break.
+  if (prev?.statement !== undefined && prev.statement !== report.statement)
+    report.breaks.push("scope_statement_change");
   if (fixed > budget) {
     layers.push({ name: "current_run", tokens: tokensOf(input.current), budget: null });
     report.overflow.push({ layer: "current_run", detail: `${fixed} tokens needed, ${budget} available` });

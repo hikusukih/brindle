@@ -46,7 +46,8 @@ if (utilitySpec) models.validate(utilitySpec);
 const purpose = new PurposeDrafter(db, (channelId) => {
   const spec = utilitySpec ?? getChannel(db, channelId).model;
   return {
-    model: models.resolve(spec), // 10 minutes, the default of docs/design/context.md; P2.11's per-model setting replaces it.
+    model: models.resolve(spec),
+    // 10 minutes, the default of docs/design/context.md; P2.11's per-model setting replaces it.
     millis: 10 * 60_000,
   };
 });
