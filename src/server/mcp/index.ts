@@ -55,6 +55,11 @@ function toolName(server: string, tool: string): string {
   return `${server}__${tool}`.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 64);
 }
 
+/** The level a tool runs at: the user's assignment, else the server's default, else external so an unreviewed tool asks. */
+export function effectFor(server: Pick<ServerConfig, "effects" | "defaultEffect">, tool: string): EffectLevel {
+  return server.effects?.[tool] ?? server.defaultEffect ?? "external";
+}
+
 /** Wraps one MCP tool as a registry tool, so approval, validation and result sizing apply to it like any other. */
 export function mcpTool(
   client: McpClient,
@@ -88,7 +93,7 @@ export async function connectMcpServers(
     try {
       await client.connect();
       for (const info of await client.listTools()) {
-        const effect = server.effects?.[info.name] ?? server.defaultEffect ?? "external";
+        const effect = effectFor(server, info.name);
         registry.register(mcpTool(client, name, info, effect));
       }
       clients.push(client);
