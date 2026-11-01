@@ -22,6 +22,7 @@ import { appMeta } from "./db/schema.js";
 import {
   archiveGoal,
   briefHistory,
+  cancelGoalRuns,
   createGoal,
   deleteGoal,
   editGoal,
@@ -33,6 +34,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
+import type { Scheduler } from "./scheduler.js";
 import { ScopeStatementError } from "./scope-statements.js";
 
 export type Greeting = {
@@ -48,13 +50,15 @@ type AppOptions = {
   models?: { defaultSpec?: string; validate: (spec: string) => void };
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
+  // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
+  scheduler?: Scheduler;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
   // SHA-256 of the login token. Absent only in tests; main.ts always passes it.
   authHash?: Buffer;
 };
 
-export function createApp({ db, engine, models, artifacts, clientRoot, authHash }: AppOptions) {
+export function createApp({ db, engine, models, artifacts, scheduler, clientRoot, authHash }: AppOptions) {
   const app = new Hono();
 
   if (authHash) app.use("/api/*", requireToken(authHash));
@@ -175,6 +179,27 @@ export function createApp({ db, engine, models, artifacts, clientRoot, authHash 
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
   });
+  // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
+  // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
+  app.get("/api/artifacts/:id/file", (c) => {
+    const artifact = artifacts?.get(c.req.param("id"));
+    const bytes = artifact && artifacts?.bytes(artifact);
+    if (!artifact || !bytes) throw new HTTPException(404, { message: "No such artifact." });
+    const shownAsText = artifact.mime === "text/plain" || artifact.mime === "text/markdown";
+    const download = `attachment; filename="${
+      artifact.file
+        .split("/")
+        .pop()
+        ?.replace(/[^\w.-]/g, "_") ?? "artifact"
+    }"`;
+    return c.body(new Uint8Array(bytes), 200, {
+      // Text and Markdown go out as text/plain so no browser treats them as markup.
+      "content-type": shownAsText ? "text/plain; charset=utf-8" : `${artifact.mime}; charset=utf-8`,
+      "content-security-policy": "sandbox",
+      "x-content-type-options": "nosniff",
+      ...(shownAsText ? {} : { "content-disposition": download }),
+    });
+  });
   app.get("/api/channels/:id/artifacts", (c) => {
     const id = c.req.param("id");
     getChannel(db, id);
@@ -204,10 +229,17 @@ export function createApp({ db, engine, models, artifacts, clientRoot, authHash 
   app.post("/api/goals/:id/brief-versions/:version/restore", (c) =>
     c.json(restoreBrief(db, c.req.param("id"), Number(c.req.param("version")))),
   );
-  app.post("/api/goals/:id/archive", (c) => c.json(archiveGoal(db, c.req.param("id"))));
-  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"))));
-  app.delete("/api/goals/:id", (c) => {
-    deleteGoal(db, c.req.param("id"));
+  // A run going in the goal's channel is cancelled first, so it cannot write to a goal that is being archived or removed.
+  app.post("/api/goals/:id/archive", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    return c.json(archiveGoal(db, id, new Date(), scheduler));
+  });
+  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"), new Date(), scheduler)));
+  app.delete("/api/goals/:id", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    deleteGoal(db, id, scheduler);
     return c.body(null, 204);
   });
 
