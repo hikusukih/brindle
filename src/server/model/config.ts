@@ -7,9 +7,16 @@ import { type ScriptedFixture, ScriptedModel } from "./scripted.js";
 /** Thrown for a spec that can't be turned into an adapter; the message is written for the user. */
 export class ModelConfigError extends Error {}
 
+/** What the Settings screen may show about a model: never a key and never an endpoint. */
+export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+
 export type ModelRegistry = {
-  /** The spec from BRINDLE_MODEL, which channels without a model of their own use. */
+  /** The spec channels without a model of their own use: the user's choice in Settings, else BRINDLE_MODEL. */
   defaultSpec: string | undefined;
+  /** Replaces the default for this process; the spec must be one of `list()`. Null goes back to BRINDLE_MODEL. */
+  setDefault(spec: string | null): void;
+  /** The configured models: BRINDLE_MODEL and each spec in BRINDLE_MODELS (comma separated). */
+  list(): ModelInfo[];
   /** The adapter for a spec, or for the default when null. One instance per spec, so a scripted model keeps its place. */
   resolve(spec: string | null): ModelAdapter;
   /** Throws ModelConfigError unless the spec could be resolved now, key included. */
@@ -75,12 +82,38 @@ export function modelRegistry(
     return adapter;
   };
 
-  const defaultSpec = value("BRINDLE_MODEL");
-  if (defaultSpec) forSpec(defaultSpec);
+  const envDefault = value("BRINDLE_MODEL");
+  if (envDefault) forSpec(envDefault);
+  const configured = [
+    ...new Set([envDefault, ...(value("BRINDLE_MODELS")?.split(",") ?? []).map((s) => s.trim())].filter(Boolean)),
+  ] as string[];
+  let chosenDefault: string | undefined;
+  const info = (spec: string): ModelInfo => {
+    const provider = spec === "scripted" ? "scripted" : spec.startsWith("anthropic:") ? "anthropic" : "openai";
+    const keyPresent =
+      provider === "scripted"
+        ? Boolean(value("BRINDLE_SCRIPTED_FIXTURE"))
+        : provider === "anthropic"
+          ? Boolean(value("ANTHROPIC_API_KEY"))
+          : Boolean(value("OPENAI_API_KEY") || value("BRINDLE_OPENAI_BASE_URL"));
+    return { spec, provider, keyPresent };
+  };
   return {
-    defaultSpec,
+    get defaultSpec() {
+      return chosenDefault ?? envDefault;
+    },
+    setDefault(spec) {
+      if (spec === null) {
+        chosenDefault = undefined;
+        return;
+      }
+      if (!configured.includes(spec)) throw new ModelConfigError(`"${spec}" is not one of the configured models.`);
+      forSpec(spec);
+      chosenDefault = spec;
+    },
+    list: () => configured.map(info),
     resolve(spec) {
-      const chosen = spec ?? defaultSpec;
+      const chosen = spec ?? chosenDefault ?? envDefault;
       if (!chosen)
         throw new ModelConfigError("No model is configured. Set BRINDLE_MODEL or choose one for this channel.");
       return forSpec(chosen);

@@ -50,7 +50,7 @@ Open `http://127.0.0.1:8787`. Data lives in `./data` unless `BRINDLE_DATA_DIR` s
 
 ### Choosing a model
 
-Set `BRINDLE_MODEL` to the default model, written `provider:name`: `openai:<model>`, `anthropic:<model>` or `scripted`. Keys come from the environment only: `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. To reach a local OpenAI-compatible server such as Ollama, set `BRINDLE_OPENAI_BASE_URL` (for example `http://127.0.0.1:11434/v1`), and no key is needed. `BRINDLE_ANTHROPIC_BASE_URL` overrides the Anthropic endpoint.
+Set `BRINDLE_MODEL` to the default model and, to offer more in the app, list the others in `BRINDLE_MODELS` (comma separated). The Settings screen shows each one with whether its key is present, and the default can be changed there; a channel's model is picked from the same list. A model is written `provider:name`: `openai:<model>`, `anthropic:<model>` or `scripted`. Keys come from the environment only: `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. To reach a local OpenAI-compatible server such as Ollama, set `BRINDLE_OPENAI_BASE_URL` (for example `http://127.0.0.1:11434/v1`), and no key is needed. `BRINDLE_ANTHROPIC_BASE_URL` overrides the Anthropic endpoint.
 
 ```sh
 OPENAI_API_KEY=... BRINDLE_MODEL=openai:<model> npm start
