@@ -1,0 +1,31 @@
+# Plan
+
+The work queue. Read `CLAUDE.md` first: it says how a session picks, claims and finishes a box. The design lives in `docs/architecture.md`; open questions and settled answers live in `docs/decisions.md` (product) and `.agents/decisions.md` (process).
+
+Every box is sized for one short session and lands as one PR. A box marked **design note** produces a document under `docs/design/` and nothing else.
+
+A box marked **review** closes each phase. Its PR follows the proposal rules in `CLAUDE.md` (plan and docs only, no code) and also checks its own box, unless a box it should wait on turns out unfinished (see _needs every box in this phase_ below). It compares the plan with what the phase actually built, fixes later boxes whose needs, sizing or wording no longer fit, splits the next phase's boxes down to one-session size, and adds boxes for gaps the phase turned up. It adds boxes only as far ahead as there is evidence for, mostly the next phase. It reads the open `[plan]` PRs first so it doesn't duplicate them. A box it thinks should go becomes a question in `docs/decisions.md`, or `.agents/decisions.md` if it is about process.
+
+## Layout
+
+There is no index: the folders are the plan. One box per file, so PRs that add, reword or check different boxes never touch the same file.
+
+- Each phase is a folder named for its number and title, such as `P2-real-models-tools-and-artifacts/`. The boxes that close the whole project are in `A-the-whole-thing/`.
+- Each box is a file in its phase folder named for its ID and a few words, such as `P2.4-artifacts-storage-and-tool.md`. The words are only a hint: a reword doesn't rename the file, and the ID is what counts.
+- A box's file holds one line: the ID in bold, the box's text, and its needs at the end.
+- Checking a box means moving its file into the phase's `done/` folder (`git mv`), in the box's own PR. A file in `done/` is checked; any other box is unchecked. So the open boxes of a phase are the files directly in its folder.
+- To read the whole plan at once: `find .agents/plan -name '[PA]*.md' | sort -V | xargs cat`.
+
+## Box IDs and needs
+
+- Every box has an ID such as **P1.2**. An ID never changes and is never reused, even if the box is reworded, moved or split. A box added later takes the next unused number in its phase.
+- Order comes from the ID: among free boxes, take the one in the lowest phase, then the lowest number. A box that should wait for another says so in its needs; nothing else orders the queue.
+- Every box ends with what it needs, such as _needs P1.1, P1.3_. A box is free to take only when every ID it needs is checked on `main`. Boxes are checked inside their own PR, so checked on `main` means merged.
+- _needs nothing_ means the box can be taken now. _needs every box in a numbered phase_ means every box in every `P<n>-` folder.
+- _needs every box in this phase_ is how a **review** box states its needs. It means every other box in the same phase folder, plus every box elsewhere marked _reviewed with_ that review, with two exceptions that keep every box reviewed somewhere:
+  - A box that waits on an unsettled decision, directly or through its needs, is outside its review until the decision is settled; it needs no marker. If its review is already checked by then, the PR that settles the decision marks the box _reviewed with_ the next unchecked review in a later phase, or, if none is left, adds a review box for it.
+  - A box that needs an unchecked box in a later phase, directly or through its needs, ends its needs with the later review that takes it instead, such as _needs P3.1; reviewed with P3.6_.
+  - Nothing else keeps a box out of its review: a box that is slow or blocked for a long time still holds the review up. So adding a box to a phase never edits the review's file.
+  - When a review is worked, it checks each box in its phase marked _reviewed with_ a later review still needs an unchecked box in a later phase, and each box left out by a decision is still waiting on an open one; it says what it found in its PR. A _reviewed with_ marker that no longer fits comes off if the box is unclaimed, and the review then waits on that box like any other; if the box is claimed, the review adds the box's ID to its own needs instead, such as _needs every box in this phase, and P2.11_. Either way, if that box is still unchecked, the review leaves its own box unchecked until that box is done.
+- _needs decision: Name_ means the box waits until the decision called Name is under Settled in `docs/decisions.md` or `.agents/decisions.md` on `main`.
+- Boxes that implement a design note list the note's ID in their needs, so a note only holds up the work that depends on it.
