@@ -137,9 +137,9 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
-- [ ] **P4.19** Standing permission, the check: the `tool_grants` and `grant_uses` tables, the opt-in `grantSubject` on a tool, `needsApproval` consulting a goal's grants (live, unexpired, uses left, exact subject, goal active, no per-use secret), the use spent in the transaction that records the decision, and `approval_decision` carrying `by: "grant"`. Proved with a fake external tool; no real tool opts in. Eval scenarios for the check, concurrency and injection. _needs P4.10, P4.3, P2.3_
+- [ ] **P4.19** Standing permission, the check: the `tool_grants` and `grant_uses` tables, the opt-in `grantSubject` on a tool, `needsApproval` consulting a goal's grants (live, unexpired, uses left, exact subject, goal active; the per-use secret rule comes with P6.9), the use spent in the transaction that records the decision, and `approval_decision` carrying `by: "grant"`. Proved with a fake external tool; no real tool opts in. Eval scenarios for the check, concurrency and injection. _needs P4.10, P4.3, P2.3_
 
-- [ ] **P4.20** Standing permission, the user's side: the allow-again choice on the approval card with an editable count and expiry, the goal page's list of grants with revoke, and the transcript showing a use as "Allowed by standing permission". _needs P4.19, P4.3a_
+- [ ] **P4.20** Standing permission, the user's side: the allow-again choice on the approval card with an editable count and expiry, the goal page's list of grants with revoke, and the transcript showing a use as "Allowed by standing permission". Eval scenarios for creation. _needs P4.19, P4.3a_
 
 - [ ] **P4.21** Unattended runs without a grant: the goal marked "waiting for you" on the Goals screen while a scheduled run is parked, a declined or timed-out call recorded on the goal, and the next fire told about it in its task message. Eval scenarios. _needs P4.19, P4.2, P4.3a_
 
@@ -171,11 +171,13 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P6.5** `request_credential`, the vault form, and detection of secrets pasted into chat. _needs P6.3, P6.4_
 
+- [ ] **P6.9** Standing permission meets the key manager: `needsApproval` shows a card for a call carrying a secret handle whose scope requires approval for each use, even under a live grant, so a grant never loosens the key manager's rule. With the key manager eval scenario from the standing permission note (P4.10). _needs P4.19, P6.3_
+
 - [ ] **P6.6** The red-team suite: every attack named in the threat model as a test, all passing. _needs P6.3, P6.4, P6.5, P2.13_
 
 - [ ] **P6.7** An adversarial session: an agent given the codebase and told to make the vault leak, with every finding filed as an issue and fixed or answered. _needs P6.6_
 
-- [ ] **P6.8** **Review** of Phase 6. _needs P6.1, P6.2, P6.3, P6.4, P6.5, P6.6, P6.7_
+- [ ] **P6.8** **Review** of Phase 6. _needs P6.1, P6.2, P6.3, P6.4, P6.5, P6.6, P6.7, P6.9_
 
 ## Phase 7 — suggestions
 
