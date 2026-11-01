@@ -4,13 +4,18 @@ The work queue. Read `CLAUDE.md` first: it says how a session picks, claims and 
 
 Every box is sized for one short session and lands as one PR. A box marked **design note** produces a document under `docs/design/` and nothing else.
 
-A box marked **review** closes each phase. Its PR follows the proposal rules in `CLAUDE.md` (plan and docs only, no code) and also checks its own box. It compares the plan with what the phase actually built, fixes later boxes whose needs, sizing or wording no longer fit, splits the next phase's boxes down to one-session size, and adds boxes for gaps the phase turned up. It adds boxes only as far ahead as there is evidence for, mostly the next phase. It reads the open `[plan]` PRs first so it doesn't duplicate them. A box it thinks should go becomes a question in `docs/decisions.md`, or `.agents/decisions.md` if it is about process.
+A box marked **review** closes each phase. Its PR follows the proposal rules in `CLAUDE.md` (plan and docs only, no code) and also checks its own box, unless a box it should wait on turns out unfinished (see _needs every box in this phase_ below). It compares the plan with what the phase actually built, fixes later boxes whose needs, sizing or wording no longer fit, splits the next phase's boxes down to one-session size, and adds boxes for gaps the phase turned up. It adds boxes only as far ahead as there is evidence for, mostly the next phase. It reads the open `[plan]` PRs first so it doesn't duplicate them. A box it thinks should go becomes a question in `docs/decisions.md`, or `.agents/decisions.md` if it is about process.
 
 ## Box IDs and needs
 
 - Every box starts with an ID such as **P1.2**. An ID never changes and is never reused, even if the box is reworded, moved or split. Order in this file comes from position, not from the ID: a box added later takes the next unused number in its phase and goes wherever it belongs.
 - Every box ends with what it needs, such as _needs P1.1, P1.3_. A box is free to take only when every ID it needs is checked on `main`. Boxes are checked inside their own PR, so checked on `main` means merged.
 - _needs nothing_ means the box can be taken now. _needs every box above_ means every box above it in this file. A box with no needs written needs the box directly above it.
+- _needs every box in this phase_ is how a **review** box states its needs. It means every other box under the same phase heading, plus every box elsewhere marked _reviewed with_ that review, with two exceptions that keep every box reviewed somewhere:
+  - A box that waits on an unsettled decision, directly or through its needs, is outside its review until the decision is settled; it needs no marker. If its review is already checked by then, the PR that settles the decision marks the box _reviewed with_ the next unchecked review in a later phase, or, if none is left, adds a review box for it.
+  - A box that needs an unchecked box in a later phase, directly or through its needs, ends its needs with the later review that takes it instead, such as _needs P3.1; reviewed with P3.6_.
+  - Nothing else keeps a box out of its review: a box that is slow or blocked for a long time still holds the review up. So adding a box to a phase never edits the review's line.
+  - When a review is worked, it checks each box in its phase marked _reviewed with_ a later review still needs an unchecked box in a later phase, and each box left out by a decision is still waiting on an open one; it says what it found in its PR. A _reviewed with_ marker that no longer fits comes off if the box is unclaimed, and the review then waits on that box like any other; if the box is claimed, the review adds the box's ID to its own line instead, such as _needs every box in this phase, and P2.11_. Either way, if that box is still unchecked, the review leaves its own box unchecked until that box is done.
 - _needs decision: Name_ means the box waits until the decision called Name is under Settled in `docs/decisions.md` or `.agents/decisions.md` on `main`.
 - Boxes that implement a design note list the note's ID in their needs, so a note only holds up the work that depends on it.
 - A blank line separates boxes, so two PRs checking off neighboring boxes merge without a conflict.
@@ -81,7 +86,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P2.12** The boundary suite in CI against a real llama.cpp server running a tiny model: a pinned llama.cpp release and a pinned, checksummed model of a few hundred megabytes at most, both cached between runs. Reply quality does not matter; real tokenization, real length rejections and real cache reuse do. A case the tiny model cannot do, such as a tool call, is skipped against it with a stated reason. If the job takes more than a few minutes it runs nightly instead of on every PR, and the PR says which. _needs P2.10_
 
-- [ ] **P2.6** **Review** of Phase 2. _needs P2.1, P2.2, P2.3, P2.4, P2.4a, P2.5, P2.7, P2.8, P2.9, P2.13, P2.16_
+- [ ] **P2.6** **Review** of Phase 2. _needs every box in this phase_
 
 ## Phase 3 — long channels stay useful
 
@@ -105,7 +110,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P3.10** The boundary suite covers context assembly: a 30-turn conversation with at least one compaction fold, in CI against the fake server and the tiny model, where every turn with no planned break in its context report reuses the cache and every cache miss matches a recorded break; the assembled request never exceeds the server's window; a fold finishes within the housekeeping time limit; and with warming on, the turn after a fold reads only its own new tokens. Run by hand against a real server, its report adds cache reuse per turn and the time each fold took, which is the data for tuning the per-model limits. _needs P2.10, P3.2, P3.4_
 
-- [ ] **P3.6** **Review** of Phase 3. _needs P3.1, P3.2, P3.3, P3.4, P3.5, P3.7, P3.11_
+- [ ] **P3.6** **Review** of Phase 3. _needs every box in this phase_
 
 ## Phase 4 — goals and the scheduler
 
@@ -141,7 +146,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
-- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.11, P4.18_
+- [ ] **P4.8** **Review** of Phase 4. _needs every box in this phase_
 
 ## Phase 5 — the feed
 
@@ -155,7 +160,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P5.6** `read_feed`: a `read` tool that lets a goal run list recent feed items (title, summary, link, date, read state), so a run can build on what earlier runs found instead of rediscovering it; with an eval scenario where a second run does not repeat the first run's items. _needs P5.1, P2.3_
 
-- [ ] **P5.5** **Review** of Phase 5. _needs P5.1, P5.2, P5.3, P5.4, P5.6_
+- [ ] **P5.5** **Review** of Phase 5. _needs every box in this phase_
 
 ## Phase 6 — the key manager
 
@@ -173,7 +178,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P6.7** An adversarial session: an agent given the codebase and told to make the vault leak, with every finding filed as an issue and fixed or answered. _needs P6.6_
 
-- [ ] **P6.8** **Review** of Phase 6. _needs P6.1, P6.2, P6.3, P6.4, P6.5, P6.6, P6.7_
+- [ ] **P6.8** **Review** of Phase 6. _needs every box in this phase_
 
 ## Phase 7 — suggestions
 
@@ -185,7 +190,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P7.3** Eval scenarios: suggestions are relevant to the fixture's goals and never repeat a dismissed one. _needs P7.2, P2.5_
 
-- [ ] **P7.4** **Review** of Phase 7. _needs P7.1, P7.2, P7.3_
+- [ ] **P7.4** **Review** of Phase 7. _needs every box in this phase_
 
 ## Phase 8 — briefs and notifications
 
@@ -197,7 +202,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P8.4** Acceptance: a "daily audio brief" goal produces a listenable brief each morning, and a fresh install notifies nothing until the user opts in. _needs P8.1, P8.2, P8.3, P4.7_
 
-- [ ] **P8.5** **Review** of Phase 8. _needs P8.1, P8.2, P8.3, P8.4_
+- [ ] **P8.5** **Review** of Phase 8. _needs every box in this phase_
 
 ## Phase 9 — plug-ins
 
@@ -211,7 +216,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P9.6** Eval scenarios for MCP as an injection source: a plug-in tool's description (which goes to the model as part of the tool list) or its result tells the model to call an `external` tool, and the run must still stop at the approval card, with nothing sent if the user declines; and a tool the user left unclassified must ask for approval. Scripted for the plumbing, with a live variant. _needs P9.1, P2.8_
 
-- [ ] **P9.4** **Review** of Phase 9. _needs P9.1, P9.6_
+- [ ] **P9.4** **Review** of Phase 9. _needs every box in this phase_
 
 ## Acceptance (the whole thing)
 
