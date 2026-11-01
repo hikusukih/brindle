@@ -117,7 +117,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.3a** The Goals screen: list each goal with its next scheduled run, and the form to create and edit one. _needs P4.3, P4.2, P1.1_
 
-- [ ] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each. _needs P4.2, P4.3_
+- [ ] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each, and the goals note's archive and restore and delete eval scenarios. _needs P4.2, P4.3_
 
 - [ ] **P4.18** A goal's channel in the UI: the goal's channel view shows its brief pinned at the top; the channel list marks goal channels (the server returns the owning goal's id with each channel) and the Channels screen leaves rename, archive and delete on them to the goal, since the channels API now refuses those with 409 `goal_channel`; and deleting a goal asks about the artifacts its channel made, as deleting a channel does (keep all by default, delete all, or choose which), with the goal delete API taking the same list. _needs P4.3, P1.7, P2.4a_
 
@@ -139,7 +139,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
-- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.18_
+- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.11, P4.18_
 
 ## Phase 5 — the feed
 
