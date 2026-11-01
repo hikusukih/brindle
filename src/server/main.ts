@@ -53,7 +53,14 @@ const purpose = new PurposeDrafter(db, (channelId) => {
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
-const app = createApp({ db, engine, models, artifacts, clientRoot: existsSync(builtClient) ? builtClient : undefined });
+const app = createApp({
+  db,
+  engine,
+  models,
+  artifacts,
+  purpose,
+  clientRoot: existsSync(builtClient) ? builtClient : undefined,
+});
 
 serve({ fetch: app.fetch, hostname: host, port }, (info) => {
   console.log(`Brindle listening on http://${info.address}:${info.port}`);

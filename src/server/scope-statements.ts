@@ -53,11 +53,20 @@ export function currentStatement(db: Db, scopeKind: "channel" | "goal", scopeId:
   return row && tag(row);
 }
 
+const channelMaxChars = 1200;
+
 export function writeStatement(db: Db, write: StatementWrite, now = new Date()): ScopeStatement {
   const text = write.text.trim();
-  if (!text) throw new ScopeStatementError("invalid_text", "A brief can't be empty.");
+  if (!text)
+    throw new ScopeStatementError(
+      "invalid_text",
+      `A ${write.scopeKind === "goal" ? "brief" : "purpose statement"} can't be empty.`,
+    );
   if (write.scopeKind === "goal" && text.length > briefMaxChars)
     throw new ScopeStatementError("invalid_text", `A brief is at most ${briefMaxChars} characters.`);
+  // 300 tokens at about four characters each, the cap docs/design/context.md gives a purpose statement; drafts are held to it in purpose.ts.
+  if (write.scopeKind === "channel" && text.length > channelMaxChars)
+    throw new ScopeStatementError("invalid_text", `A purpose statement is at most ${channelMaxChars} characters.`);
   const row: Stored = {
     id: randomUUID(),
     scopeKind: write.scopeKind,

@@ -12,8 +12,6 @@ import { PurposeDrafter } from "./purpose.js";
 import { RunEngine } from "./runs.js";
 import { currentStatement, writeStatement } from "./scope-statements.js";
 
-const reply = (text: string) => ({ turns: [{ text: [text] }] });
-
 function setup(utility: ModelAdapter = new ScriptedModel({ turns: [{ text: ["Planning a trip to Lisbon."] }] })) {
   const db = openDatabase(":memory:");
   const chat = new ScriptedModel({ turns: Array.from({ length: 6 }, (_, i) => ({ text: [`Answer ${i + 1}.`] })) });
@@ -134,7 +132,12 @@ describe("purpose statement API", () => {
     expect(edited.current).toMatchObject({ text: "Lisbon, in May.", version: 2 });
     const restored = await json(await send("POST", "/versions/1/restore"));
     expect(restored.current).toMatchObject({ text: "Planning a trip to Lisbon.", version: 3 });
-    expect((await send("PUT", "", { text: "   " })).status).toBe(400);
+    const empty = await send("PUT", "", { text: "   " });
+    expect(empty.status).toBe(400);
+    expect(await empty.text()).toMatch(/purpose statement can't be empty/);
+    const long = await send("PUT", "", { text: "x".repeat(1201) });
+    expect(long.status).toBe(400);
+    expect(await long.text()).toMatch(/at most 1200/);
     expect((await send("PUT", "", { text: 5 })).status).toBe(400);
     expect((await send("POST", "/versions/9/restore")).status).toBe(404);
   });
