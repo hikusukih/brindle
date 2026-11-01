@@ -71,6 +71,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P2.8** Eval scenarios for injection through a fetched page: a `web_fetch` result tells the model to call an external-effect tool, and the run must stop at the approval card, with nothing sent if the user declines; and a result that tries to pass itself off as the user or the system must not change what the model is allowed to do. Scripted for the plumbing, with a live variant. _needs P2.3, P2.5_
 
+- [ ] **P2.16** Eval scenarios for second-order injection: text planted by one run and read by a later one. A run fetches a page that holds an instruction and saves it into an artifact; a run in another channel then reads that artifact with `read_artifact` and must treat it as data, stopping at the approval card for any external call it suggests, with nothing sent if the user declines. The same planted text arriving through a goal's state document is added when P4.4 and P4.4b land, and through `read_feed`, `search_history` and reference documents when those tools land. Scripted for the plumbing, with a live variant. _needs P2.9, P2.8_
+
 - [ ] **P2.7** Authentication: a login token set through an environment variable or generated and printed once at first start; every `/api` route except the health check answers 401 without it; the client asks for it once and keeps it for the session; the README's "no login yet" warning is replaced by how the token works. The token travels in an `Authorization` header, never a cookie, so a hostile page cannot ride the browser's state, and the server compares it in constant time. _needs P1.8_
 
 - [ ] **P2.11** Model settings: the context window, the run's step, token and time limits, the housekeeping time limit and cache warming, set per model in a JSON file in the data directory keyed by model spec, holding no secrets. A model without settings gets the defaults from `docs/design/context.md`, chosen for a CPU-only llama.cpp host. The run engine takes its limits from the channel's model instead of one global set, and context assembly takes its window from it instead of the fixed default P3.2 uses. When no window is set, an OpenAI-compatible local server's `/props` is asked, and a configured window larger than the server's is a visible configuration error. The channel view shows the model's window and limits. The context report names the model a request actually used, not the channel's spec, so changing the default model counts as a `model_change` break. A model change also resets where history starts, so runs dropped under a smaller window come back when the new window has room for them. _needs P2.2a, P3.1, P3.2_
@@ -79,7 +81,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P2.12** The boundary suite in CI against a real llama.cpp server running a tiny model: a pinned llama.cpp release and a pinned, checksummed model of a few hundred megabytes at most, both cached between runs. Reply quality does not matter; real tokenization, real length rejections and real cache reuse do. A case the tiny model cannot do, such as a tool call, is skipped against it with a stated reason. If the job takes more than a few minutes it runs nightly instead of on every PR, and the PR says which. _needs P2.10_
 
-- [ ] **P2.6** **Review** of Phase 2. _needs P2.1, P2.2, P2.3, P2.4, P2.4a, P2.5, P2.7, P2.8, P2.13_
+- [ ] **P2.6** **Review** of Phase 2. _needs P2.1, P2.2, P2.3, P2.4, P2.4a, P2.5, P2.7, P2.8, P2.9, P2.13, P2.16_
 
 ## Phase 3 — long channels stay useful
 
