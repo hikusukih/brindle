@@ -156,6 +156,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
+- [ ] **P4.24** **Design note:** a usage ceiling for unattended work. Nothing today bounds what scheduled runs spend across a day: each run has its own step, token and time limits, but a goal with several schedules, or a hosted model, can add up to an unwelcome bill with nobody watching. The note settles: the unit (model tokens per local day, since prices differ by model and the user's own server costs nothing), the default (none for a local model, a stated number for a hosted one, set per model in the P2.11 settings file), what counts (scheduled runs, and housekeeping calls made on their behalf, but never a run the user starts), what happens at the ceiling (remaining fires are recorded as `skipped_budget` in the fire log and shown on the goal, a user's own messages still run), whether the user is told once and where, and how the ceiling interacts with the grace window and with catch-up. Eval scenarios: a ceiling reached part way through a day skips later fires and not the user's messages, and the next local day starts fresh. _needs P4.1, P2.11_
+
 - [ ] **P4.8** **Review** of Phase 4. _needs every box in this phase_
 
 ## Phase 5 — the feed
