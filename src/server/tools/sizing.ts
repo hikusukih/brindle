@@ -5,6 +5,11 @@ export const defaultMaxResultTokens = 4_000;
 // Tokens are estimated as characters over four; an exact tokenizer isn't worth a dependency.
 const charsPerToken = 4;
 
+/** The one place a token count is guessed; assembly and sizing must agree. */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / charsPerToken);
+}
+
 export type SizedResult = { text: string; truncated: boolean };
 
 /**

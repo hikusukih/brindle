@@ -1,11 +1,20 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { getChannel } from "./channels.js";
+import {
+  assembleContext,
+  ContextOverflow,
+  defaultContextWindow,
+  fingerprint,
+  type PastRun,
+  previousRequest,
+  recordContext,
+} from "./context.js";
 import type { Db } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
-import { sizeResult } from "./tools/sizing.js";
+import { estimateTokens, sizeResult } from "./tools/sizing.js";
 
 export type Run = typeof runs.$inferSelect;
 export type RunEvent = typeof events.$inferSelect;
@@ -16,6 +25,8 @@ export type RunLimits = {
   /** Input plus output tokens summed over the run. */
   maxTokens: number;
   maxMillis: number;
+  /** The model's context window in tokens; a per-model setting arrives later. */
+  contextWindow: number;
   /** How long a run may wait for an approval before it ends as "approval not given". */
   approvalMillis: number;
 };
@@ -24,6 +35,7 @@ export const defaultLimits: RunLimits = {
   maxSteps: 10,
   maxTokens: 100_000,
   maxMillis: 120_000,
+  contextWindow: defaultContextWindow,
   approvalMillis: 24 * 60 * 60 * 1000,
 };
 
@@ -108,6 +120,17 @@ function messagesFromEvents(stored: RunEvent[]): Message[] {
   return out;
 }
 
+/** A run that ended mid-step can leave a tool call with no result, which providers reject; drop those calls. */
+function closeCalls(messages: Message[]): Message[] {
+  const answered = new Set(messages.flatMap((m) => (m.role === "tool" ? [m.toolCallId] : [])));
+  return messages.flatMap((m): Message[] => {
+    if (m.role !== "assistant" || !m.toolCalls) return [m];
+    const toolCalls = m.toolCalls.filter((c) => answered.has(c.id));
+    if (!toolCalls.length && !m.content) return [];
+    return [{ ...m, toolCalls: toolCalls.length ? toolCalls : undefined }];
+  });
+}
+
 type Listener = (event: RunEvent | null) => void;
 
 /** Owns the live side of runs: abort handles and SSE subscribers. Persistence stays in the database. */
@@ -144,7 +167,7 @@ export class RunEngine {
       throw new RunError("busy", "This channel is still working on a message.");
 
     const model = this.modelFor(channel.model);
-    const history = this.history(channelId);
+    const past = this.history(channelId);
     const run: Run = {
       id: randomUUID(),
       channelId,
@@ -160,7 +183,7 @@ export class RunEngine {
     this.active.set(run.id, controller);
     this.settled.set(
       run.id,
-      this.loop(run.id, channelId, model, [...history, { role: "user", content: message }], controller),
+      this.loop(run.id, channelId, model, past, [{ role: "user", content: message }], controller),
     );
     return run;
   }
@@ -228,7 +251,8 @@ export class RunEngine {
     const snapshot = payload([...stored].reverse().find((e) => e.type === "approval_request") as RunEvent);
     const controller = new AbortController();
     this.active.set(run.id, controller);
-    const messages = [...this.history(run.channelId, run.id), ...messagesFromEvents(stored)];
+    const past = this.history(run.channelId, run.id);
+    const current = messagesFromEvents(stored);
     const resume: Resume = {
       step: Number(snapshot.step),
       tokens: Number(snapshot.tokens),
@@ -237,7 +261,7 @@ export class RunEngine {
       decisions,
       requested,
     };
-    this.settled.set(run.id, this.loop(run.id, run.channelId, model, messages, controller, resume));
+    this.settled.set(run.id, this.loop(run.id, run.channelId, model, past, current, controller, resume));
   }
 
   private modelFor(spec: string | null): ModelAdapter {
@@ -277,7 +301,8 @@ export class RunEngine {
     return { backlog, done: false, unsubscribe: () => set.delete(onEvent) };
   }
 
-  private history(channelId: string, exceptRunId?: string): Message[] {
+  /** A channel's finished runs oldest first, each as the messages the model saw: replies, tool calls and sized results. */
+  private history(channelId: string, exceptRunId?: string): PastRun[] {
     const channelRuns = this.db
       .select()
       .from(runs)
@@ -299,21 +324,17 @@ export class RunEngine {
       .all();
     const byRun = new Map<string, RunEvent[]>();
     for (const e of rows) byRun.set(e.runId, [...(byRun.get(e.runId) ?? []), e]);
-    const messages: Message[] = [];
-    for (const run of channelRuns) {
-      for (const e of byRun.get(run.id) ?? []) {
-        if (e.type !== "message" && e.type !== "text") continue;
-        const { text } = JSON.parse(e.data) as { text: string };
-        messages.push({ role: e.type === "message" ? "user" : "assistant", content: text });
-      }
-    }
-    return messages;
+    return channelRuns.map((run) => ({
+      id: run.id,
+      messages: closeCalls(messagesFromEvents(byRun.get(run.id) ?? [])),
+    }));
   }
 
   private async loop(
     runId: string,
     channelId: string,
     model: ModelAdapter,
+    past: PastRun[],
     messages: Message[],
     controller: AbortController,
     resume?: Resume,
@@ -350,11 +371,33 @@ export class RunEngine {
           let text = "";
           calls = [];
           let stop: string | undefined;
-          const request = {
-            messages: [...messages],
-            tools: this.tools.size ? this.tools.definitions() : undefined,
-            signal: controller.signal,
-          };
+          const tools = this.tools.size ? this.tools.definitions() : undefined;
+          let assembled: ReturnType<typeof assembleContext>;
+          try {
+            assembled = assembleContext({
+              past,
+              current: messages,
+              window: this.limits.contextWindow,
+              toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
+              model: getChannel(this.db, channelId).model ?? "default",
+              toolSet: fingerprint(tools ?? []),
+              previous: previousRequest(this.db, channelId),
+            });
+          } catch (error) {
+            // Nothing is sent, but keep the report at the step it happened so the debug view shows why.
+            if (error instanceof ContextOverflow)
+              recordContext(this.db, { runId, channelId, step, messages: null, report: error.report });
+            throw error;
+          }
+          recordContext(this.db, {
+            runId,
+            channelId,
+            step,
+            messages: assembled.messages,
+            tools,
+            report: assembled.report,
+          });
+          const request = { messages: assembled.messages, tools, signal: controller.signal };
           for await (const ev of model.stream(request)) {
             if (ev.type === "text") text += ev.text;
             else if (ev.type === "tool_call") calls.push(ev.call);
@@ -454,6 +497,7 @@ export class RunEngine {
       if (cause instanceof CancelledByUser) return this.finish(runId, "cancelled", "cancelled by you");
       if (cause instanceof TimeLimit) return this.stopForLimit(runId, `time limit (${maxMillis / 1000}s) reached`);
       if (cause instanceof ApprovalTimeout) return this.stopForLimit(runId, "approval not given");
+      if (error instanceof ContextOverflow) return this.stopForLimit(runId, error.message);
       const message = error instanceof ModelError ? error.message : "Something went wrong inside the server.";
       this.append(runId, "error", { message, ...(error instanceof ModelError ? { kind: error.kind } : {}) });
       this.finish(runId, "failed", message);
