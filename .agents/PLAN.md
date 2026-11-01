@@ -130,6 +130,12 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each, and the goals note's archive and restore and delete eval scenarios. _needs P4.2, P4.3_
 
+- [ ] **P4.12** Runs gain a goal scope and a schedule trigger; the server builds the scheduler with hooks that create a goal-scoped run from a fire's task prompt and report a goal as busy while it has a run going, and starts the poll and `recover()` at startup, reading cron in the user's time zone from P4.22. Scheduled runs get the 12-hour approval timeout, ending as "approval not given". Eval scenarios from the goals note for room to run. _needs P4.2, P4.3, P4.22_
+
+- [ ] **P4.22** The user's time zone: one setting holding an IANA name, taken from the browser the first time the app opens and changeable in the app. The UI shows every time in it rather than the browser's zone, the current date the agent is told uses it, and changing it moves every schedule's next fire with it. Eval scenario from the goals note: a schedule moves when the setting changes. _needs P4.2_
+
+- [ ] **P4.23** Held messages: a message sent in a goal's channel while a scheduled run is going there is held instead of refused, shown as next in line with a cancel button, counted as the goal being busy, and started the moment the scheduled run ends. Eval scenarios from the goals note for held messages. _needs P4.12_
+
 - [ ] **P4.18** A goal's channel in the UI: the goal's channel view shows its brief pinned at the top; the channel list marks goal channels (the server returns the owning goal's id with each channel) and the Channels screen leaves rename, archive and delete on them to the goal, since the channels API now refuses those with 409 `goal_channel`; and deleting a goal asks about the artifacts its channel made, as deleting a channel does (keep all by default, delete all, or choose which), with the goal delete API taking the same list. _needs P4.3, P1.7, P2.4a_
 
 - [ ] **P4.4** The state document: `update_goal_state` with versions, shown as an artifact, readable and editable by the user, with history. _needs P4.3, P2.4_
@@ -142,7 +148,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.16** Add a goal from the Goals screen: suggested goals as buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) and a text box, which is the whole screen while there are no goals, where the user types or pastes what they want. Either sends the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form. The call has no tools and no scope, and nothing is created until the user confirms the form. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3a, P4.6_
 
-- [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.4, P4.5, P2.2_
+- [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.12, P4.4, P4.5, P2.2_
 
 - [ ] **P4.9** `propose_goal`: from a conversation the model drafts a goal (title, brief, optionally a schedule) as a card the user edits and confirms before anything is created, never creating one itself; with an eval scenario where a chat about learning Rust yields a sensible draft. _needs P4.3, P4.5_
 
@@ -154,7 +160,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 5 — the feed
 
-- [ ] **P5.1** Feed items from scheduled runs: title, summary, link, date, source goal, deduplicated against existing items. _needs P4.2, P4.3_
+- [ ] **P5.1** Feed items from scheduled runs: title, summary, link, date, source goal, deduplicated against existing items. _needs P4.2, P4.12, P4.3_
 
 - [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P1.1_
 
@@ -188,7 +194,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P7.5** **Design note:** the suggestion run. It is the one run that reads across every scope, so the note settles: what it may read (briefs, purpose statements, state documents, run summaries) and what it must not (raw fetched text, which could plant a card); how its context is built and bounded; how a card is deduplicated and how a dismissal is remembered (by topic, not by wording); the daily cap and what counts as one day; and what accepting a credential-request card may and may not carry over from the text that inspired it. With eval scenarios, including a fixture page that tries to steer a suggestion toward a credential request. _needs P4.1, P6.1_
 
-- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P7.5, P4.2, P4.3, P3.3_
+- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P7.5, P4.2, P4.12, P4.3, P3.3_
 
 - [ ] **P7.2** Accept and dismiss: accept becomes a run, goal, schedule or credential request; dismissed cards are remembered. _needs P7.1, P4.5, P6.5_
 
@@ -200,7 +206,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P8.1** `speak`: text-to-speech through an OpenAI-compatible speech endpoint, saved as an audio artifact with a player in the gallery. _needs P2.3, P2.4, P2.4a_
 
-- [ ] **P8.2** The daily digest: new feed items, goal check-ins, finished long runs, in-app and optionally to a webhook. _needs P5.1, P4.2_
+- [ ] **P8.2** The daily digest: new feed items, goal check-ins, finished long runs, in-app and optionally to a webhook. _needs P5.1, P4.2, P4.12_
 
 - [ ] **P8.3** Web push, opt-in per goal or channel, nothing on by default. _needs P8.2_
 
