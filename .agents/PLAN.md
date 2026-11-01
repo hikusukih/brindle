@@ -132,7 +132,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.12** Runs gain a goal scope and a schedule trigger; the server builds the scheduler with hooks that create a goal-scoped run from a fire's task prompt and report a goal as busy while it has a run going, and starts the poll and `recover()` at startup, reading cron in the user's time zone from P4.22. Scheduled runs get the 12-hour approval timeout, ending as "approval not given". Eval scenarios from the goals note for room to run. _needs P4.2, P4.3, P4.22_
 
-- [ ] **P4.22** The user's time zone: one setting holding an IANA name, taken from the browser the first time the app opens and changeable in the app. The UI shows every time in it rather than the browser's zone, the current date the agent is told uses it, and changing it moves every schedule's next fire with it. Eval scenario from the goals note: a schedule moves when the setting changes. _needs P4.2_
+- [x] **P4.22** The user's time zone: one setting holding an IANA name, taken from the browser the first time the app opens and changeable in the app. The UI shows every time in it rather than the browser's zone, the current date the agent is told uses it, and changing it moves every schedule's next fire with it. Eval scenario from the goals note: a schedule moves when the setting changes. _needs P4.2_
 
 - [ ] **P4.23** Held messages: a message sent in a goal's channel while a scheduled run is going there is held instead of refused, shown as next in line with a cancel button, counted as the goal being busy, and started the moment the scheduled run ends. Eval scenarios from the goals note for held messages. _needs P4.12_
 
