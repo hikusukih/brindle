@@ -10,8 +10,8 @@ A goal has one channel, but a goal is rarely discussed in one place. "Prepare fo
 
 ### What is stored
 
-- **`goal_channels`**: goal id, channel id, `own` (true for the goal's own channel, which is linked from creation), how the link was made (`creation`, `goal_page`, `channel_header`, `offer` or `draft`), and a timestamp. The primary key is (goal id, channel id). A channel is the own channel of at most one goal (a partial unique index on `own`). `goals.channel_id` from the goals note stays as the fast path to the own channel; the row for it in `goal_channels` is what lets every rule below ask one table.
-- A link is created only by a request from the user's own click: on the goal page, in a channel's header, by accepting a link offer, or by confirming a goal drafted in a conversation (`propose_goal`, P4.9, whose card includes "link this conversation's channel"). No tool, brief, state document or page can create one. There is no tool for linking at all.
+- **`goal_channels`**: goal id, channel id, `own` (true for the goal's own channel, which is linked from creation), how the link was made (`creation`, `side_panel`, `channel_header`, `offer` or `draft`), and a timestamp. The primary key is (goal id, channel id). A channel is the own channel of at most one goal (a partial unique index on channel id where `own`), and a goal has exactly one `own` row (a partial unique index on goal id where `own`). `goals.channel_id` from the goals note stays as the fast path to the own channel; the row for it in `goal_channels` is what lets every rule below ask one table.
+- A link is created only by a request from the user's own click: in the side panel of either channel, in a channel's header, by accepting a link offer, or by confirming a goal drafted in a conversation (`propose_goal`, P4.9, whose card includes "link this conversation's channel"). No tool, brief, state document or page can create one. There is no tool for linking at all.
 - Unlinking is one click from either side. The own channel's row cannot be removed: the endpoint refuses it, and so does a database constraint on `own`.
 
 ### What a channel run gets from a linked goal
@@ -33,7 +33,7 @@ A schedule's destination is the goal's own channel or any linked channel (`desti
 ### A goal is never without a channel
 
 - The own channel cannot be unlinked, archived or deleted by itself; the controls are not shown and the server refuses the request.
-- **Archiving a goal** archives its own channel with it, and restoring the goal restores both. Linked channels are untouched and keep the links, which sit idle while the goal is archived (a channel run cannot write to an archived goal).
+- **Archiving a goal** archives its own channel with it, and restoring the goal restores both. Linked channels are untouched and keep the links, which sit idle while the goal is archived (a channel run cannot write to an archived goal). An archived goal's brief still rides in the linked channels and `get_goal_state` can still read it there, since reading changes nothing and the user may be looking at the goal's history; only writes are refused.
 - **Deleting a goal** asks what becomes of its channel: keep it as an ordinary channel, or delete it. Keeping it removes the goal's pinned brief, copies the brief's current text in as the channel's purpose statement (confirmed, since the user wrote it), and leaves its runs. This amends the goals note, which deleted the channel with the goal. All other links to the goal are removed.
 - **Any other linked channel** that is archived or deleted is only unlinked; restoring it does not bring the link back, since a link is something the user makes.
 
