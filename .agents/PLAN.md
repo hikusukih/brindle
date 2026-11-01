@@ -98,6 +98,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P3.3** Purpose statements: drafted after the first few exchanges, editable, sent with every run. _needs P3.2_
 
+- [ ] **P3.20** Purpose statement history: the channel view lists a statement's earlier versions (author, time, whether confirmed) with Restore on each, using the restore endpoint P3.3 added, and the context report records which statement version each request used, as `docs/design/context.md` says it should. _needs P3.3_
+
 - [ ] **P3.4** Rolling compaction, with eval scenarios: facts, decisions and commitments planted early survive several rounds of compaction. _needs P3.2, P2.5_
 
 - [ ] **P3.11** "New channel from here" on any run: the new channel is seeded from the summary that run used, the run itself, and a freshly refreshed summary of the source, which is left unchanged; a failed seed still creates the channel, empty, with a note. With eval scenarios. _needs P3.3, P3.4_
