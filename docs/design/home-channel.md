@@ -1,6 +1,6 @@
 # Design note: the Home channel
 
-Box P3.8. Status: proposed. Implementation waits until this merges, and the boxes for it are added by the Phase 3 review. Older drafts called it the landing channel. Terms in bold at their first use here (**Home channel**, **run**, **scope**, **housekeeping call**, **request** and **card**) are defined in the glossary in `docs/architecture.md`.
+Box P3.8. Status: proposed. Implementation waits until this merges; its boxes are P3.22 to P3.24. Older drafts called it the landing channel. Terms in bold at their first use here (**Home channel**, **run**, **scope**, **housekeeping call**, **request**, **card** and **report**) are defined in the glossary in `docs/architecture.md`.
 
 ## Problem
 
