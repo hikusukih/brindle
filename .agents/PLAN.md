@@ -138,9 +138,9 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P4.3** Goals, server side: create, edit and archive a goal, and the goal's channel with its brief pinned. _needs P4.1, P1.2_
 
-- [ ] **P4.17** The goal page: one goal's brief, its state document, its schedules with the next run and its own channel, with the actions to edit, archive and delete it (delete asks about its artifacts as P4.18 says), and the form to create a goal, which opens the new goal's page. Until the Goals screen exists, a goal's page opens from its channel's header and the create form from the Channels screen. Its recent reports join the page once reports exist, and its linked channels with P4.14. _needs P4.3, P4.4, P4.18_
+- [ ] **P4.17** The channel side panel: a panel in every channel's view, collapsed by default and opened from the channel header (a drawer on a phone), so it takes no room from the conversation. In every channel it lists the artifacts the channel's runs made. In a goal's channel it also holds the goal: its brief, its state document, its schedules with the next run (the server gains an API that lists a goal's schedules), and the actions to edit, archive and delete it (delete asks about its artifacts as P4.18 says). Reports (P5.9) and goal links (P4.14) join the panel when they land. _needs P4.3, P4.4, P4.18, P2.4a_
 
-- [ ] **P4.3a** The Goals screen: a grid of tiles about 200 by 200 pixels, one per goal, each with an icon the client draws from the goal's title (initials or stylized text on a color derived from the title, so it is deterministic and needs no image), the title, a line of the brief and the next scheduled run, each opening the goal's page; the create form moves here from the Channels screen. _needs P4.17, P4.2, P1.1_
+- [ ] **P4.3a** The Goals screen: a text box for a new goal and a Create button, which send the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form; the call has no tools and no scope, and nothing is created until the user confirms the form. Below them, the goals as tiles about 200 by 200 pixels, each with an icon the client draws from the goal's title (initials or stylized text on a color derived from the title, so it is deterministic and needs no image), the title, a line of the brief and the next scheduled run (the goals list returns it), each opening the goal's channel. With no goals yet, the text box is the whole screen. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3, P4.2, P1.1, P3.3_
 
 - [ ] **P4.11** Archiving a goal disables its schedules and remembers which were enabled, restoring brings back exactly those, and deleting a goal removes its schedules and fire log. Archiving or deleting a goal while one of its scheduled runs is going cancels that run first. With tests for each, and the goals note's archive and restore and delete eval scenarios. _needs P4.2, P4.3_
 
@@ -154,13 +154,13 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.4** The state document: `update_goal_state` with versions, shown as an artifact, readable and editable by the user, with history. _needs P4.3, P2.4_
 
-- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4, P4.17_
+- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the channel side panel (P4.17) of either channel, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4, P4.17_
 
 - [ ] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
 
 - [ ] **P4.6** Goal templates behind the category buttons. _needs P4.3a_
 
-- [ ] **P4.16** Add a goal from the Goals screen: suggested goals as buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) and a text box, which is the whole screen while there are no goals, where the user types or pastes what they want. Either sends the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form. The call has no tools and no scope, and nothing is created until the user confirms the form. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3a, P4.6_
+- [ ] **P4.16** Suggested goals on the Goals screen: buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) beside the text box, each sending its words to the same draft the text box uses. _needs P4.3a, P4.6_
 
 - [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.12, P4.4, P4.5, P2.2_
 
@@ -180,7 +180,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P5.8** The reports store and system events: the table, system reports written from templates (a scheduled run failed or was missed, a run stopped on a limit, a credential problem), run reports from scheduled and goal runs, and the API to list, filter and mark them read. _needs P5.7, P4.2, P4.3_
 
-- [ ] **P5.9** The reports pane and "Attach to message": the Home channel's pane and each channel's own, and the quoted-report event shown to the user and sent to the model as a labeled quotation. The Home channel itself is built by the box the Phase 3 review adds for P3.8, and this box's needs gain it then. _needs P5.8, P3.8_
+- [ ] **P5.9** The reports pane and "Attach to message": in the channel side panel (P4.17), the Home channel's and each channel's own, and the quoted-report event shown to the user and sent to the model as a labeled quotation. The Home channel itself is built by the box the Phase 3 review adds for P3.8, and this box's needs gain it then. _needs P5.8, P3.8, P4.17_
 
 - [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P1.1_
 
