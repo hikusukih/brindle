@@ -149,7 +149,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P5.2** The feed screen with mark-read and per-goal filtering. _needs P5.1, P1.1_
 
-- [ ] **P5.3** Atom feeds, overall and per goal, behind the token, and verified in a real RSS reader. _needs P5.1, P2.7_
+- [ ] **P5.3** Atom feeds, overall and per goal, behind the token, and verified in a real RSS reader. _needs P5.1, P2.7, decision: How an RSS reader proves it may read the Atom feeds_
 
 - [ ] **P5.4** Acceptance: a goal watching a public events-listing page fills the feed, a re-run adds only new entries, and the Atom feed shows them on a phone. _needs P5.2, P5.3, P2.3_
 
