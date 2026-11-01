@@ -10,6 +10,7 @@ import { openDatabase } from "./db/index.js";
 import { artifacts, events } from "./db/schema.js";
 import { ScriptedModel } from "./model/scripted.js";
 import { defaultLimits, RunEngine } from "./runs.js";
+import { findArtifactsTool, readArtifactTool } from "./tools/artifacts.js";
 import { builtInTools } from "./tools/index.js";
 
 function setup() {
@@ -102,6 +103,49 @@ describe("create_artifact in a run", () => {
     }
     const ev = db.select().from(events).where(eq(events.runId, run.id)).all();
     expect(ev.some((e) => e.type === "artifact" && JSON.parse(e.data).id === art?.id)).toBe(true);
+  });
+});
+
+describe("find_artifacts and read_artifact", () => {
+  const ctx = {
+    runId: "r",
+    scope: { kind: "channel" as const, id: "c" },
+    signal: new AbortController().signal,
+    log: () => {},
+    emit: () => {},
+  };
+
+  it("finds by title or content and kind across channels, and reads content back", async () => {
+    const { db, store } = setup();
+    const a = createChannel(db, "A");
+    const b = createChannel(db, "B");
+    const doc = store.create(
+      { title: "Itinerary", kind: "document", content: "Fly to Lisbon" },
+      origin(a.id),
+      new Date(2026, 0, 1),
+    );
+    store.create({ title: "Sums", kind: "data", content: "{}" }, origin(b.id), new Date(2026, 0, 2));
+    const find = findArtifactsTool(store);
+    const read = readArtifactTool(store);
+    expect(find.effect).toBe("read");
+    expect(read.effect).toBe("read");
+    expect(await find.execute({}, ctx)).toMatch(/Sums[\s\S]*Itinerary/);
+    const byContent = await find.execute({ query: "LISBON" }, ctx);
+    expect(byContent).toContain(doc.id);
+    expect(byContent).toContain('from channel "A"');
+    expect(byContent).not.toContain("Sums");
+    expect(await find.execute({ kind: "data" }, ctx)).not.toContain("Itinerary");
+    expect(await find.execute({ query: "nothing here" }, ctx)).toBe("No artifacts match.");
+    expect(await read.execute({ id: doc.id }, ctx)).toContain("Fly to Lisbon");
+    expect(await read.execute({ id: "nope" }, ctx)).toBe("No artifact has that id.");
+  });
+
+  it("is registered alongside create_artifact", () => {
+    const { store } = setup();
+    const names = builtInTools({}, store)
+      .definitions()
+      .map((d) => d.name);
+    expect(names).toEqual(expect.arrayContaining(["create_artifact", "find_artifacts", "read_artifact"]));
   });
 });
 
