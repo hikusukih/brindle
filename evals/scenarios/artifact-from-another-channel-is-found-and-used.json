@@ -1,0 +1,42 @@
+{
+  "name": "artifact-from-another-channel-is-found-and-used",
+  "description": "A run in one channel finds an artifact made in another, reads it, and uses its content; the content comes back as tool-result data.",
+  "messages": ["What did the packing list from my trip channel say to bring?"],
+  "seedArtifacts": [
+    {
+      "id": "seed-packing",
+      "title": "Packing list",
+      "kind": "document",
+      "content": "Bring a rain jacket and two adapters.",
+      "fromChannel": "Trip planning"
+    },
+    {
+      "id": "seed-other",
+      "title": "Budget",
+      "kind": "data",
+      "content": "{\"total\": 1200}",
+      "fromChannel": "Money"
+    }
+  ],
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [{ "id": "c1", "name": "find_artifacts", "arguments": { "query": "packing" } }]
+      },
+      {
+        "toolCalls": [{ "id": "c2", "name": "read_artifact", "arguments": { "id": "seed-packing" } }]
+      },
+      {
+        "text": ["Bring a rain jacket and two adapters."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "toolResultIncludes": ["Trip planning", "rain jacket"],
+      "replyIncludes": ["rain jacket", "two adapters"],
+      "eventTypes": ["message", "tool_call", "tool_result", "tool_call", "tool_result", "text"]
+    }
+  ]
+}

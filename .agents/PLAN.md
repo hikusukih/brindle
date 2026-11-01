@@ -43,6 +43,8 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [x] **P1.7** The Channels screen: list, create, rename, archive, restore and delete channels from the UI; a channel view that sends a message, streams the run's events and shows a failed run's error in place. _needs P1.2, P1.4, P1.8_
 
+- [ ] **P1.9** Channels in the side rail: on wide screens each channel is listed indented under the Channels heading (the Home channel first once it exists), and the heading still opens the Channels screen for archive, restore and delete; on narrow screens the Channels tab opens the list itself, since the bottom bar has no room for children. UI only, with tests. _needs P1.7_
+
 - [x] **P1.5** Acceptance: two channels with separate histories survive a server restart and a reload; a failed run shows its error in place and the channel keeps working. _needs P1.1, P1.4, P1.7, P1.8_
 
 - [x] **P1.6** **Review** of Phase 1. _needs P1.1, P1.2, P1.3, P1.4, P1.5, P1.7, P1.8_
@@ -61,21 +63,29 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P2.4a** The gallery screen: newest first, filter by kind and scope, each item linked to its run (or marked "from deleted channel <name>" once that is gone), with the empty state from P1.1 until the first artifact exists. Deleting a channel that made artifacts asks first: keep all (the default), delete all, or choose which. _needs P2.4, P1.1_
 
-- [ ] **P2.9** `find_artifacts` and `read_artifact`: `read` tools that let a run in any channel or goal list artifacts by title, kind and provenance, with a text match, and read one's content, cut by the usual result sizing. Artifact content comes back as tool-result data like a fetched page, since an artifact may hold text from the web. With an eval scenario where a run in one channel finds and uses an artifact made in another. _needs P2.4, P2.3_
+- [ ] **P2.13** Serving artifacts safely: an endpoint that returns an artifact's file only with `Content-Security-Policy: sandbox`, `X-Content-Type-Options: nosniff` and `Content-Disposition: attachment` for every kind except plain text and Markdown (rendered by the client as text, never as HTML), so a `page` artifact written by the model, possibly from fetched web text, cannot run script on the app's origin or reach the app's API. With a test that an HTML artifact containing a script is served with those headers. _needs P2.4_
+
+- [x] **P2.9** `find_artifacts` and `read_artifact`: `read` tools that let a run in any channel or goal list artifacts by title, kind and provenance, with a text match, and read one's content, cut by the usual result sizing. Artifact content comes back as tool-result data like a fetched page, since an artifact may hold text from the web. With an eval scenario where a run in one channel finds and uses an artifact made in another. _needs P2.4, P2.3_
 
 - [x] **P2.5** Evals: the `evals/` runner, one scenario format, CI running all scenarios against the scripted model, and a manual command to run them against a real model. _needs P1.4, P0.2_
 
-- [ ] **P2.8** Eval scenarios for injection through a fetched page: a `web_fetch` result tells the model to call an external-effect tool, and the run must stop at the approval card, with nothing sent if the user declines; and a result that tries to pass itself off as the user or the system must not change what the model is allowed to do. Scripted for the plumbing, with a live variant. _needs P2.3, P2.5_
+- [x] **P2.8** Eval scenarios for injection through a fetched page: a `web_fetch` result tells the model to call an external-effect tool, and the run must stop at the approval card, with nothing sent if the user declines; and a result that tries to pass itself off as the user or the system must not change what the model is allowed to do. Scripted for the plumbing, with a live variant. _needs P2.3, P2.5_
 
 - [ ] **P2.7** Authentication: a login token set through an environment variable or generated and printed once at first start; every `/api` route except the health check answers 401 without it; the client asks for it once and keeps it for the session; the README's "no login yet" warning is replaced by how the token works. The token travels in an `Authorization` header, never a cookie, so a hostile page cannot ride the browser's state, and the server compares it in constant time. _needs P1.8_
 
-- [ ] **P2.6** **Review** of Phase 2. _needs P2.1, P2.2, P2.3, P2.4, P2.4a, P2.5, P2.7, P2.8_
+- [ ] **P2.11** Model settings: the context window, the run's step, token and time limits, the housekeeping time limit and cache warming, set per model in a JSON file in the data directory keyed by model spec, holding no secrets. A model without settings gets the defaults from `docs/design/context.md`, chosen for a CPU-only llama.cpp host. The run engine takes its limits from the channel's model instead of one global set, and context assembly takes its window from it instead of the fixed default P3.2 uses. When no window is set, an OpenAI-compatible local server's `/props` is asked, and a configured window larger than the server's is a visible configuration error. The channel view shows the model's window and limits. The context report names the model a request actually used, not the channel's spec, so changing the default model counts as a `model_change` break. A model change also resets where history starts, so runs dropped under a smaller window come back when the new window has room for them. _needs P2.2a, P3.1, P3.2_
+
+- [ ] **P2.10** Model-boundary integration suite: one set of tests that runs against any OpenAI-compatible server named by `BRINDLE_BOUNDARY_URL`, with a fake llama.cpp server in the repo as the default target so it runs in CI on every PR. The fake server answers chat completions and `/props`, rejects a request over its window the way llama.cpp does, reports cached tokens as the longest common prefix with its previous prompt, and can be told to stall. The tests check that the window is read and a configured one larger than the server's is refused; that Brindle never sends a request it estimates is over the window and turns a server's length rejection into its own "too long for the model" error; that token counts match the server's; that a streamed tool call round-trips; that a request extending the previous one is reported as reusing the cache; and that the run and housekeeping time limits end a stalled call cleanly. One case drives the web app in a browser through a whole run. Pointed at a real server by hand, the same suite prints a report of prompt read speed, reply speed and cache reuse per case. The README's local setup section says how to start llama.cpp's server for Brindle (at least two slots, and that its context size is split across them). _needs P2.11_
+
+- [ ] **P2.12** The boundary suite in CI against a real llama.cpp server running a tiny model: a pinned llama.cpp release and a pinned, checksummed model of a few hundred megabytes at most, both cached between runs. Reply quality does not matter; real tokenization, real length rejections and real cache reuse do. A case the tiny model cannot do, such as a tool call, is skipped against it with a stated reason. If the job takes more than a few minutes it runs nightly instead of on every PR, and the PR says which. _needs P2.10_
+
+- [ ] **P2.6** **Review** of Phase 2. _needs P2.1, P2.2, P2.3, P2.4, P2.4a, P2.5, P2.7, P2.8, P2.13_
 
 ## Phase 3 — long channels stay useful
 
 - [x] **P3.1** **Design note:** context assembly (the layers of a prompt and a token budget for each), the purpose statement, rolling compaction (when it triggers, what it must keep, how a summary is revised), and the drift nudge. _needs P2.1_
 
-- [ ] **P3.2** Context assembly with per-layer budgets, and a debug view showing exactly what a run sent. _needs P3.1, P1.4_
+- [x] **P3.2** Context assembly with per-layer budgets, and a debug view showing exactly what a run sent. _needs P3.1, P1.4_
 
 - [ ] **P3.3** Purpose statements: drafted after the first few exchanges, editable, sent with every run. _needs P3.2_
 
@@ -91,27 +101,39 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P3.9** **Design note:** reference documents shared across channels (a cast of characters, contacts, topic notes) as living, versioned artifacts. The note settles: how they are stored next to goal state documents and artifacts; when a run looks one up (the user names a person or topic, or the purpose statement does, and the user's message calls for it) and how a large one is read in part rather than whole; how the agent offers "Save this to People?" and how often; each document's home (starts where it was made, moves with the conversation when it is carried to another channel) and its origin, kept as a note; which writes need the user's confirmation (proposed: any change made from a channel other than its home, since origin stops counting once home moves); and the injection cases (a fetched page or a compromised model trying to plant or rewrite an entry). With eval scenarios. _needs P3.1, P2.4_
 
+- [ ] **P3.10** The boundary suite covers context assembly: a 30-turn conversation with at least one compaction fold, in CI against the fake server and the tiny model, where every turn with no planned break in its context report reuses the cache and every cache miss matches a recorded break; the assembled request never exceeds the server's window; a fold finishes within the housekeeping time limit; and with warming on, the turn after a fold reads only its own new tokens. Run by hand against a real server, its report adds cache reuse per turn and the time each fold took, which is the data for tuning the per-model limits. _needs P2.10, P3.2, P3.4_
+
 - [ ] **P3.6** **Review** of Phase 3. _needs P3.1, P3.2, P3.3, P3.4, P3.5, P3.7, P3.11_
 
 ## Phase 4 — goals and the scheduler
 
 - [x] **P4.1** **Design note:** the goal model (brief, versioned state document, schedules, channel), how schedules are stored and fire, what happens to runs missed while the server was down, and concurrency limits. _needs P2.1_
 
-- [ ] **P4.2** The scheduler: persisted cron-like entries, survives restarts without double-firing, applies the missed-run policy, and keeps a log of what fired. _needs P4.1, P1.4_
+- [ ] **P4.13** **Design note:** goals link to other channels. A goal keeps its own channel, created with it, and can also be linked to others. A link is made only by the user (from the goal page, from a channel's header, by accepting an inline offer, or by confirming a goal drafted in a conversation) and ends in one click from either side. The note settles: the `goal_channels` table; the rule that no goal is ever without a channel, so a goal's own channel cannot be unlinked, archived or deleted apart from the goal (archive or delete the goal instead, and the dialog asks what becomes of its channel: keep it as an ordinary channel, or delete it), while any other link can be removed freely and deleting or archiving a linked channel only unlinks it; what a channel run gets from a linked goal (a one-line brief under a cap, read access to its state document, and write access through the state document's existing versioned edits, each recording the channel and run and open to a one-click revert), and that a channel that is not linked can do none of it; a schedule's destination being the goal's own channel or any linked channel, falling back to the goal's own channel, with a system report, when a linked one goes away; how the one-run-per-goal rule applies to goal runs only, with the state document's edit-conflict rules covering a channel run writing alongside one; and what the link offer looks like and how often it appears. Eval scenarios include a linked-channel write that is reverted, an unlinked channel that cannot write, a goal that cannot be left without a channel however its channels are archived, unlinked or deleted, and an injection scenario where a channel that fetched a hostile page writes to a linked goal's state. _needs P4.1_
+
+- [x] **P4.2** The scheduler: persisted cron-like entries, survives restarts without double-firing, applies the missed-run policy, and keeps a log of what fired. _needs P4.1, P1.4_
 
 - [x] **P4.3** Goals, server side: create, edit and archive a goal, and the goal's channel with its brief pinned. _needs P4.1, P1.2_
 
 - [ ] **P4.3a** The Goals screen: list each goal with its next scheduled run, and the form to create and edit one. _needs P4.3, P4.2, P1.1_
 
+- [ ] **P4.18** A goal's channel in the UI: the goal's channel view shows its brief pinned at the top; the channel list marks goal channels (the server returns the owning goal's id with each channel) and the Channels screen leaves rename, archive and delete on them to the goal, since the channels API now refuses those with 409 `goal_channel`; and deleting a goal asks about the artifacts its channel made, as deleting a channel does (keep all by default, delete all, or choose which), with the goal delete API taking the same list. _needs P4.3, P1.7, P2.4a_
+
 - [ ] **P4.4** The state document: `update_goal_state` with versions, shown as an artifact, readable and editable by the user, with history. _needs P4.3, P2.4_
+
+- [ ] **P4.14** Goal links: the `goal_channels` table and API, the goal's own channel linked from creation and not removable apart from the goal, linking and unlinking from the goal page and from a channel's header, channel runs given linked goals' briefs and the goal-state read and edit tools for linked goals and no others, a schedule's destination chosen among the goal's linked channels with the fallback P4.13 settles, and the archive and delete rules from P4.13. With the eval scenarios P4.13 lists. _needs P4.13, P4.3, P4.4_
 
 - [ ] **P4.5** `propose_schedule` from plain words, confirmed by the user, with eval scenarios ("twice a day", "weekdays at 6:30", "every other Sunday"). _needs P4.2, P4.3, P2.3, P2.5_
 
 - [ ] **P4.6** Goal templates behind the category buttons. _needs P4.3a_
 
+- [ ] **P4.16** Add a goal from the Goals screen: suggested goals as buttons ("lose 5 lbs", "buy a new rug" and the like, fixed text to start with) and a text box, which is the whole screen while there are no goals, where the user types or pastes what they want. Either sends the words to a housekeeping call that drafts a goal (title, brief, optionally a schedule) into the edit form. The call has no tools and no scope, and nothing is created until the user confirms the form. With an eval scenario where pasted text becomes a sensible draft and a hostile paste cannot create a goal without the confirmation. _needs P4.3a, P4.6_
+
 - [ ] **P4.7** Acceptance: "learn Rust" produces a curriculum held in the goal's state document, visible in the gallery, and a later lesson updates its progress. _needs P4.2, P4.4, P4.5, P2.2_
 
 - [ ] **P4.9** `propose_goal`: from a conversation the model drafts a goal (title, brief, optionally a schedule) as a card the user edits and confirms before anything is created, never creating one itself; with an eval scenario where a chat about learning Rust yields a sensible draft. _needs P4.3, P4.5_
+
+- [ ] **P4.15** The link offer and linking from `propose_goal`: an inline, dismissible offer "Link this goal to this channel?" when a conversation keeps returning to a goal, which links nothing until it is accepted, and a goal drafted from a conversation (P4.9) linked to that channel once the user confirms it. _needs P4.14, P4.9_
 
 - [ ] **P4.10** **Design note:** standing permission for external tools: what a goal can grant (a tool, a host, a count or time limit), where grants are stored, how the user reviews and revokes them, how `needsApproval` consults them, what an unattended run does when it needs an approval that has not been granted, and how grants appear in the audit trail. _needs P4.1, P4.3_
 
@@ -121,7 +143,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P4.21** Unattended runs without a grant: the goal marked "waiting for you" on the Goals screen while a scheduled run is parked, a declined or timed-out call recorded on the goal, and the next fire told about it in its task message. Eval scenarios. _needs P4.19, P4.2, P4.3a_
 
-- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.19, P4.20, P4.21_
+- [ ] **P4.8** **Review** of Phase 4. _needs P4.1, P4.2, P4.3, P4.3a, P4.4, P4.5, P4.6, P4.7, P4.9, P4.10, P4.18, P4.19, P4.20, P4.21_
 
 ## Phase 5 — the feed
 
@@ -149,7 +171,7 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 - [ ] **P6.5** `request_credential`, the vault form, and detection of secrets pasted into chat. _needs P6.3, P6.4_
 
-- [ ] **P6.6** The red-team suite: every attack named in the threat model as a test, all passing. _needs P6.3, P6.4, P6.5_
+- [ ] **P6.6** The red-team suite: every attack named in the threat model as a test, all passing. _needs P6.3, P6.4, P6.5, P2.13_
 
 - [ ] **P6.7** An adversarial session: an agent given the codebase and told to make the vault leak, with every finding filed as an issue and fixed or answered. _needs P6.6_
 
@@ -157,7 +179,9 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 7 — suggestions
 
-- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P4.2, P4.3, P3.3_
+- [ ] **P7.5** **Design note:** the suggestion run. It is the one run that reads across every scope, so the note settles: what it may read (briefs, purpose statements, state documents, run summaries) and what it must not (raw fetched text, which could plant a card); how its context is built and bounded; how a card is deduplicated and how a dismissal is remembered (by topic, not by wording); the daily cap and what counts as one day; and what accepting a credential-request card may and may not carry over from the text that inspired it. With eval scenarios, including a fixture page that tries to steer a suggestion toward a credential request. _needs P4.1, P6.1_
+
+- [ ] **P7.1** The suggestion run: reads goals, purpose statements and recent activity, proposes a few cards, at most daily, off switch in settings. _needs P7.5, P4.2, P4.3, P3.3_
 
 - [ ] **P7.2** Accept and dismiss: accept becomes a run, goal, schedule or credential request; dismissed cards are remembered. _needs P7.1, P4.5, P6.5_
 
@@ -179,13 +203,17 @@ A box marked **review** closes each phase. Its PR follows the proposal rules in 
 
 ## Phase 9 — plug-ins
 
-- [ ] **P9.1** MCP client: configure MCP servers, their tools join the registry with an effect level the user assigns. _needs P2.3_
+- [x] **P9.1** MCP client: configure MCP servers, their tools join the registry with an effect level the user assigns. _needs P2.3_
 
 - [ ] **P9.2** **Design note:** ACP delegates (spawning an external agent, mapping a run to its session, surfacing its permission requests as approval cards), after checking the protocol's current state. _needs P2.1, decision: ACP delegates_
 
 - [ ] **P9.3** The ACP delegate tool, verified with one real coding agent. _needs P9.2, P2.3_
 
-- [ ] **P9.4** **Review** of Phase 9. _needs P9.1_
+- [ ] **P9.5** MCP servers over streamable HTTP: the same tool registration as the stdio client, for servers reached by URL, with the bearer credential held as a key-manager handle that is never in `mcp.json`, and the request refused for any host outside the handle's scope. Hosted MCP servers are mostly HTTP, so stdio alone leaves out most of them. Bearer tokens only; OAuth flows are out of scope. _needs P9.1, P6.3_
+
+- [ ] **P9.6** Eval scenarios for MCP as an injection source: a plug-in tool's description (which goes to the model as part of the tool list) or its result tells the model to call an `external` tool, and the run must still stop at the approval card, with nothing sent if the user declines; and a tool the user left unclassified must ask for approval. Scripted for the plumbing, with a live variant. _needs P9.1, P2.8_
+
+- [ ] **P9.4** **Review** of Phase 9. _needs P9.1, P9.6_
 
 ## Acceptance (the whole thing)
 

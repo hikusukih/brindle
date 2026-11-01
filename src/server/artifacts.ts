@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { and, desc, eq, inArray } from "drizzle-orm";
 import type { Db } from "./db/index.js";
@@ -90,6 +90,37 @@ export class ArtifactStore {
 
   list(): Artifact[] {
     return this.db.select().from(artifacts).orderBy(desc(artifacts.createdAt)).all();
+  }
+
+  /** Newest first. The text matches a title or the content, ignoring case; a file that cannot be read just doesn't match on content. */
+  find(filter: { query?: string; kind?: string; limit?: number } = {}): Artifact[] {
+    const needle = filter.query?.trim().toLowerCase();
+    const found: Artifact[] = [];
+    const rows = this.db
+      .select()
+      .from(artifacts)
+      .where(filter.kind ? eq(artifacts.kind, filter.kind) : undefined)
+      .orderBy(desc(artifacts.createdAt))
+      .all();
+    for (const a of rows) {
+      if (needle && !a.title.toLowerCase().includes(needle) && !this.content(a)?.toLowerCase().includes(needle))
+        continue;
+      found.push(a);
+      if (found.length >= (filter.limit ?? 20)) break;
+    }
+    return found;
+  }
+
+  get(id: string): Artifact | undefined {
+    return this.db.select().from(artifacts).where(eq(artifacts.id, id)).get();
+  }
+
+  content(a: Artifact): string | undefined {
+    try {
+      return readFileSync(join(this.dir, a.file), "utf8");
+    } catch {
+      return undefined;
+    }
   }
 
   /** The artifacts a channel made, which the delete-channel prompt offers for removal. Goal-owned ones are never listed. */
