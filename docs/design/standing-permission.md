@@ -4,7 +4,7 @@ Box P4.10. Status: proposed. Implementation waits until this merges, and its box
 
 ## Problem
 
-An `external` tool never runs without the user's yes, which is the right rule for a chat and the wrong one for a goal that runs at 6:30 in the morning while the user sleeps: every scheduled run that wants to send, post or buy parks at a **card** nobody sees until it times out. The tools note left one seam for this, `needsApproval(tool, call, scope)`, and deferred the design to Phase 4. This note settles what a goal can be granted, where grants live, how the user reviews and revokes them, how the check consults them, what an unattended run does without one, and how each use shows up afterwards. The constraint throughout: a grant must never be something a model, a fetched page or a goal's own text can create or widen.
+An `external` tool never runs without the user's yes, which is the right rule for a chat and the wrong one for a goal that runs at 6:30 in the morning while the user sleeps: every scheduled run that wants to send, post or buy parks at a **card** nobody sees until it times out. The tools note left one seam for this, `needsApproval(tool, call, scope)`, and deferred the design to Phase 4. This note settles what a goal can be granted, where grants live, how the user reviews and revokes them, how the check consults them, what an unattended run does without one, and how each use shows up afterward. The constraint throughout: a grant must never be something a model, a fetched page or a goal's own text can create or widen.
 
 ## Approach
 
@@ -14,7 +14,7 @@ A grant belongs to one goal and covers one tool and one subject, with a limit:
 
 - **Tool.** Only a tool that opts in can be granted. An `external` tool declares a `grantSubject(args)` function that returns the one thing a grant would be about, derived by the tool's own code from the arguments: the recipient of an email, the host of a request, the account a post goes to. A tool without one cannot be granted and always shows a card. Anything that spends money, deletes, or has no natural subject should not opt in.
 - **Subject.** An exact string, such as `sam@example.com`. A grant for a subject never covers another. A grant for "any subject" exists but takes a second, separate confirmation and is not offered by default.
-- **Limit.** Both a number of uses and an expiry, with defaults (20 uses, 30 days) the user can change before accepting. A grant with no limit cannot be created from a card; the goal page can make one after a plain warning.
+- **Limit.** Both a number of uses and an expiry, with defaults (20 uses, 30 days) the user can change before accepting. A grant with no limit cannot be created from a card; the goal's page can make one after a plain warning.
 
 A grant is created only by a user's click: on the approval card for an `external` call in a goal's run, an extra choice beside Approve and Decline, "Approve and allow this again for this goal", showing the tool and the subject, with the limit editable; or on the goal's page. The model has no tool for it, and nothing in a brief, a state document, a fetched page or a message can make one.
 
@@ -37,7 +37,7 @@ It then spends a use in the same transaction that records the decision, before t
 Nothing new is needed beyond the goals note: the run parks at the card, the approval timeout for a scheduled run is 12 hours, and the run then ends as "stopped: approval not given", visibly. Three additions make that usable:
 
 - The card for a scheduled run is marked as waiting on the goal, and the goal's tile on the Goals screen says "waiting for you", so a user who opens the app finds it without hunting for a run.
-- A call that timed out or was declined is not asked again by a later fire of the same schedule until the user has looked. Nothing new is stored for this; the next fire looks at the previous fire's run for an `approval_decision` event that was declined or timed out, and its run is told, in its task message, that the call was not approved and why it stopped, so it can carry on without repeating the question every morning.
+- A call that timed out or was declined is not asked again by a later fire until the user has looked. Nothing new is stored for this. A fire looks at the most recent run of this goal that holds an `approval_decision` event for the same tool and subject. If that decision was declined or timed out, and the user has not looked since, the call is not asked again, and the run is told in its task message that the call was not approved and why it stopped, so it can carry on without repeating the question every morning. "Looked" means one of these happened after that decision: the user opened that run or the goal's page, or approved or declined the same call by hand. Because the lookup goes to the most recent run that decided, not to the previous fire, a third fire behaves like the second.
 - Nothing pushes a notification. Pushes are opt-in (Phase 8); until then the card waits where the user will see it.
 
 ### Review and revoke
@@ -65,7 +65,7 @@ A grant fixes what tool and which subject, not what is sent. A run that has read
 
 - **The check** (scripted): a matching, live grant runs the call with no card, writes `approval_decision` with `by: "grant"` and spends one use; a different subject, an expired grant, a used-up one, a revoked one, and a channel's run each show a card; an archived goal's grant does not apply, and does again once the goal is restored.
 - **Creation** (scripted): approving a card with the allow-again choice creates a grant with the subject the tool derived, not one typed by the model; no tool or message creates one; "any subject" needs its own confirmation.
-- **Unattended** (scripted): a scheduled run needing an ungranted call parks, ends as "stopped: approval not given" after the timeout, marks the goal as waiting, and the next fire is told not to repeat the call.
+- **Unattended** (scripted): a scheduled run needing an ungranted call parks, ends as "stopped: approval not given" after the timeout, marks the goal as waiting, and the next two fires are told not to repeat the call, until the user opens the run or the goal's page, after which the card comes back.
 - **Injection** (scripted, then live): a fetched page tells the model to send to a subject that has no grant, and the run stops at a card; a page that tells it to widen its own permission has no tool to do it with; a grant for one goal does not apply in another goal's run.
 - **Key manager** (scripted, once P6 lands): a call using a secret that requires approval per use shows a card even under a live grant.
 - **Concurrency** (scripted): two runs spending the last use of a grant at once spend it once and one of them shows a card.
