@@ -22,17 +22,20 @@ export function getTimeZone(db: Db): string | null {
 }
 
 /** With `onlyIfUnset`, the first writer wins: the browser's guess on first open never replaces a choice already made. */
-export function setTimeZone(db: Db, name: unknown, opts: { onlyIfUnset?: boolean } = {}): string {
+export function setTimeZone(db: Db, raw: unknown, opts: { onlyIfUnset?: boolean } = {}): string {
+  const name = typeof raw === "string" ? raw.trim() : raw;
   if (!isTimeZone(name)) throw new TimeZoneError("That is not a time zone I know. Use a name like America/New_York.");
   if (opts.onlyIfUnset) {
     const current = getTimeZone(db);
     if (current) return current;
   }
+  // Intl accepts any case; store the standard spelling so the UI and the agent are not shown "europe/lisbon".
+  const canonical = new Intl.DateTimeFormat("en-US", { timeZone: name }).resolvedOptions().timeZone;
   db.insert(appMeta)
-    .values({ key, value: name })
-    .onConflictDoUpdate({ target: appMeta.key, set: { value: name } })
+    .values({ key, value: canonical })
+    .onConflictDoUpdate({ target: appMeta.key, set: { value: canonical } })
     .run();
-  return name;
+  return canonical;
 }
 
 /** The sentence the model is given, so "tomorrow" and "this evening" mean what the user means. */

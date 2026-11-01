@@ -52,6 +52,15 @@ describe("scheduler", () => {
     ]);
   });
 
+  it("logs an occurrence that is already due when the zone changes, then moves the next one", () => {
+    const { db, scheduler } = setup({ maxConcurrent: 10 });
+    const s = scheduler.createSchedule({ goalId: "g", cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));
+    scheduler.setTimeZone("Asia/Tokyo", at("2026-10-28T10:30:05Z"));
+    expect(scheduler.log().map((f) => f.dueAt)).toEqual(["2026-10-28T10:30:00.000Z"]);
+    const row = db.select().from(schedules).where(eq(schedules.id, s.id)).get();
+    expect((row?.nextFireAt ?? "") > "2026-10-28T10:30:05Z").toBe(true);
+  });
+
   it("starts an occurrence once, however often it polls and however often it restarts", () => {
     const { db, scheduler, make, begun } = setup();
     scheduler.createSchedule({ goalId: "g", cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));

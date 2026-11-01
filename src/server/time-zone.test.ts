@@ -21,6 +21,12 @@ describe("the user's time zone", () => {
     expect(getTimeZone(db)).toBe("America/Denver");
   });
 
+  it("stores the standard spelling of a name typed in another case", () => {
+    const db = openDatabase(":memory:");
+    expect(setTimeZone(db, " europe/lisbon ")).toBe("Europe/Lisbon");
+    expect(getTimeZone(db)).toBe("Europe/Lisbon");
+  });
+
   it("the API reads and sets it, tells the scheduler of a change only, and answers 400 for a bad name", async () => {
     const db = openDatabase(":memory:");
     const changes: string[] = [];
