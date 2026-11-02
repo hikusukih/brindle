@@ -34,7 +34,7 @@ A schedule's destination is the goal's own channel or any linked channel (`desti
 
 - The own channel cannot be unlinked, archived or deleted by itself; the controls are not shown and the server refuses the request.
 - **Archiving a goal** archives its own channel with it, and restoring the goal restores both. Linked channels are untouched and keep the links, which sit idle while the goal is archived (a channel run cannot write to an archived goal). An archived goal's brief still rides in the linked channels and `get_goal_state` can still read it there, since reading changes nothing and the user may be looking at the goal's history; only writes are refused.
-- **Deleting a goal** asks what becomes of its channel: keep it as an ordinary channel, or delete it. Keeping it removes the goal's pinned brief, copies the brief's current text in as the channel's purpose statement (confirmed, since the user wrote it), and leaves its runs. This amends the goals note, which deleted the channel with the goal. All other links to the goal are removed.
+- **Deleting a goal** asks what becomes of its channel: keep it as an ordinary channel, or delete it. Keeping it removes the goal's pinned brief, copies the brief's current version in as the channel's purpose statement with that version's author and confirmed flag, so an agent draft the user confirmed with one click stays marked as the agent's, and leaves its runs. This amends the goals note, which deleted the channel with the goal. All other links to the goal are removed.
 - **Any other linked channel** that is archived or deleted is only unlinked; restoring it does not bring the link back, since a link is something the user makes.
 
 ### The link offer
@@ -67,4 +67,4 @@ Scripted scenarios, plus unit tests of the table's rules.
 ## Open for the user
 
 - Whether a channel write that follows fetched text in the same run should need a card (as the reference documents note proposes for any write by a run that took in outside text), or whether the limits above are enough. Recommendation: the limits for now, because the state document cannot widen any permission; add the card if the first weeks show channel writes being reverted often.
-- Whether archiving a goal should ask what becomes of its channel, as deleting does. Recommendation: no; archiving is meant to be undone, and an archived goal with a live ordinary channel is the state this note is built to avoid.
+- Settled by the user: archiving a goal does not ask what becomes of its channel; it always archives the channel with it, and only deleting asks. Archiving is meant to be undone, and an archived goal with a live ordinary channel is the state this note is built to avoid.
