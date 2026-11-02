@@ -57,7 +57,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
 const engine = new RunEngine(
   db,
   // A channel whose model is no longer configured falls back to the default; the channel header says so.
-  (spec) => models.resolve(spec && models.list().some((m) => m.spec === spec) ? spec : null),
+  (spec) => models.resolveForChannel(spec),
   undefined,
   tools,
 );

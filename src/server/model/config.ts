@@ -21,6 +21,8 @@ export type ModelRegistry = {
   resolve(spec: string | null): ModelAdapter;
   /** Throws ModelConfigError unless the spec could be resolved now, key included. */
   validate(spec: string): void;
+  /** A channel's own model, or the default when the channel has none or its model is no longer configured. */
+  resolveForChannel(spec: string | null): ModelAdapter;
 };
 
 const openAiDefaultBase = "https://api.openai.com/v1";
@@ -119,7 +121,11 @@ export function modelRegistry(
       return forSpec(chosen);
     },
     validate(spec) {
+      if (!configured.includes(spec)) throw new ModelConfigError(`"${spec}" is not one of the configured models.`);
       forSpec(spec);
+    },
+    resolveForChannel(spec) {
+      return this.resolve(spec && configured.includes(spec) ? spec : null);
     },
   };
 }

@@ -12,7 +12,7 @@ function setup(env: Record<string, string>) {
   const db = openDatabase(":memory:");
   // Each fake path stands for a different scripted fixture, so which model ran shows in the reply.
   const models = modelRegistry(env, (path) => fixture(path));
-  const engine = new RunEngine(db, (spec) => models.resolve(spec));
+  const engine = new RunEngine(db, (spec) => models.resolveForChannel(spec));
   const app = createApp({ db, engine, models });
   return { db, engine, app, channel: createChannel(db, "Test") };
 }
@@ -35,11 +35,32 @@ describe("per-channel model", () => {
   });
 
   it("refuses a model that can't be built, such as one whose key is missing", async () => {
-    const { app, channel, db } = setup({});
+    const { app, channel, db } = setup({ BRINDLE_MODELS: "anthropic:claude-test" });
     const res = await post(app, `/api/channels/${channel.id}/model`, { model: "anthropic:claude-test" });
     expect(res.status).toBe(400);
     expect(((await res.json()) as { message: string }).message).toMatch(/ANTHROPIC_API_KEY/);
     expect(getChannel(db, channel.id).model).toBeNull();
+  });
+
+  it("refuses a model that is not one of the configured ones, even if it has a key", async () => {
+    const { app, channel, db } = setup({
+      OPENAI_API_KEY: "sk-test-1234abcd1234abcd",
+      BRINDLE_MODELS: "scripted",
+      BRINDLE_SCRIPTED_FIXTURE: "x",
+    });
+    const res = await post(app, `/api/channels/${channel.id}/model`, { model: "openai:other" });
+    expect(res.status).toBe(400);
+    expect(((await res.json()) as { message: string }).message).toMatch(/not one of the configured/);
+    expect(getChannel(db, channel.id).model).toBeNull();
+  });
+
+  it("falls back to the default when a channel's model is no longer configured", () => {
+    const models = modelRegistry(
+      { BRINDLE_MODEL: "scripted", BRINDLE_SCRIPTED_FIXTURE: "Default.", OPENAI_API_KEY: "sk-test-1234abcd1234abcd" },
+      (path) => fixture(path),
+    );
+    expect(models.resolveForChannel("openai:gone")).toBe(models.resolve(null));
+    expect(models.resolveForChannel(null)).toBe(models.resolve(null));
   });
 
   it("runs a channel on its own model and others on the default", async () => {
@@ -47,6 +68,7 @@ describe("per-channel model", () => {
       BRINDLE_MODEL: "scripted",
       BRINDLE_SCRIPTED_FIXTURE: "Default.",
       OPENAI_API_KEY: "sk-test-1234abcd1234abcd",
+      BRINDLE_MODELS: "scripted, openai:gpt-test",
       // Nothing listens here, so the run on the OpenAI model fails fast without touching the network.
       BRINDLE_OPENAI_BASE_URL: "http://127.0.0.1:1/v1",
     });
