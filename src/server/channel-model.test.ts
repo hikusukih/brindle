@@ -4,6 +4,7 @@ import { createChannel, getChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { ModelConfigError, modelRegistry } from "./model/config.js";
 import { RunEngine } from "./runs.js";
+import { getSetting } from "./settings.js";
 
 const fixture = (word: string) => JSON.stringify({ turns: [{ text: [word] }] });
 
@@ -22,7 +23,10 @@ const post = (app: ReturnType<typeof createApp>, path: string, body: unknown) =>
 describe("per-channel model", () => {
   it("reports the default and stores a channel's own choice", async () => {
     const { app, channel } = setup({ BRINDLE_MODEL: "scripted", BRINDLE_SCRIPTED_FIXTURE: "Default." });
-    expect(await (await app.request("/api/models")).json()).toEqual({ default: "scripted" });
+    expect(await (await app.request("/api/models")).json()).toEqual({
+      default: "scripted",
+      models: [{ spec: "scripted", provider: "scripted", keyPresent: true }],
+    });
 
     const res = await post(app, `/api/channels/${channel.id}/model`, { model: "scripted" });
     expect(((await res.json()) as { model: string }).model).toBe("scripted");
@@ -64,5 +68,41 @@ describe("per-channel model", () => {
 
   it("is a ModelConfigError that explains itself", () => {
     expect(() => modelRegistry({}).resolve(null)).toThrow(ModelConfigError);
+  });
+});
+
+describe("the configured models and the default", () => {
+  const env = {
+    BRINDLE_MODEL: "scripted",
+    BRINDLE_SCRIPTED_FIXTURE: "Default.",
+    BRINDLE_MODELS: "anthropic:claude-test, openai:gpt-test, scripted",
+    OPENAI_API_KEY: "sk-test-1234abcd1234abcd",
+  };
+  const put = (app: ReturnType<typeof createApp>, model: unknown) =>
+    app.request("/api/settings/default-model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    });
+
+  it("lists each model once with whether its key is present, and never a key or an endpoint", async () => {
+    const { app } = setup({ ...env, BRINDLE_OPENAI_BASE_URL: "http://192.0.2.10:8080/v1" });
+    const text = await (await app.request("/api/models")).text();
+    expect(JSON.parse(text).models).toEqual([
+      { spec: "scripted", provider: "scripted", keyPresent: true },
+      { spec: "anthropic:claude-test", provider: "anthropic", keyPresent: false },
+      { spec: "openai:gpt-test", provider: "openai", keyPresent: true },
+    ]);
+    expect(text).not.toContain("sk-test");
+    expect(text).not.toContain("192.0.2.10");
+  });
+
+  it("changes the default to a configured model and refuses others", async () => {
+    const { app, db } = setup(env);
+    expect((await put(app, "openai:gpt-test")).status).toBe(200);
+    expect(((await (await app.request("/api/models")).json()) as { default: string }).default).toBe("openai:gpt-test");
+    expect(getSetting(db, "default_model")).toBe("openai:gpt-test");
+    expect((await put(app, "openai:not-listed")).status).toBe(400);
+    expect((await put(app, 7)).status).toBe(400);
   });
 });

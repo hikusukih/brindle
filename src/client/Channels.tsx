@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { type Artifact, api, type Channel, type Run, type RunEvent } from "./api";
+import { type Artifact, api, type Channel, type ModelInfo, type Run, type RunEvent } from "./api";
 import { AuthedEventSource } from "./events";
 import { channelIdFromHash } from "./screens";
 
@@ -394,7 +394,7 @@ function ChannelView({ id }: { id: string }) {
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
-  const [modelText, setModelText] = useState("");
+  const [configured, setConfigured] = useState<ModelInfo[]>([]);
   const source = useRef<AuthedEventSource | null>(null);
 
   const reload = useCallback(async () => {
@@ -403,8 +403,11 @@ function ChannelView({ id }: { id: string }) {
 
   useEffect(() => {
     setChannel(null);
-    api<{ default: string | null }>("/api/models")
-      .then((m) => setDefaultModel(m.default))
+    api<{ default: string | null; models: ModelInfo[] }>("/api/models")
+      .then((m) => {
+        setDefaultModel(m.default);
+        setConfigured(m.models);
+      })
       .catch(() => {});
     api<Channel[]>("/api/channels")
       .then(async (active) => {
@@ -482,7 +485,6 @@ function ChannelView({ id }: { id: string }) {
   const chooseModel = async (model: string | null) => {
     try {
       setChannel(await api<Channel>(`/api/channels/${id}/model`, { method: "POST", body: { model } }));
-      setModelText("");
       setProblem(null);
     } catch (err) {
       setProblem((err as Error).message);
@@ -502,25 +504,27 @@ function ChannelView({ id }: { id: string }) {
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
           <p>Model: {channel.model ?? (defaultModel ? `${defaultModel} (default)` : "none configured")}</p>
+          {channel.model && configured.length > 0 && !configured.some((m) => m.spec === channel.model) && (
+            <p role="note" className="text-amber-700">
+              {channel.model} is no longer configured, so this channel uses the default
+              {defaultModel ? ` (${defaultModel})` : ""}.
+            </p>
+          )}
           {!readOnly && (
-            <form
-              className="flex gap-2"
-              onSubmit={(e) => {
-                e.preventDefault();
-                chooseModel(modelText.trim() || null);
-              }}
+            <select
+              aria-label="Model for this channel"
+              value={channel.model ?? ""}
+              onChange={(e) => chooseModel(e.target.value || null)}
+              className="min-h-11 rounded-lg border border-slate-300 px-3"
             >
-              <input
-                aria-label="Model for this channel"
-                placeholder="provider:name, such as openai:gpt-4o"
-                value={modelText}
-                onChange={(e) => setModelText(e.target.value)}
-                className="min-h-11 min-w-0 flex-1 rounded-lg border border-slate-300 px-3"
-              />
-              <button type="submit" className={quiet}>
-                {modelText.trim() ? "Set model" : "Use default"}
-              </button>
-            </form>
+              <option value="">Use the default{defaultModel ? ` (${defaultModel})` : ""}</option>
+              {configured.map((m) => (
+                <option key={m.spec} value={m.spec} disabled={!m.keyPresent}>
+                  {m.spec}
+                  {m.keyPresent ? "" : " (key missing)"}
+                </option>
+              ))}
+            </select>
           )}
         </div>
       )}

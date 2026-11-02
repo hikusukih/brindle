@@ -4,6 +4,7 @@ import { ArtifactsScreen } from "./Artifacts";
 import { api } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { LoginGate } from "./Login";
+import { SettingsScreen } from "./Settings";
 import { type ScreenId, screenFromHash, screens } from "./screens";
 
 type State = { kind: "loading" } | { kind: "ready"; greeting: Greeting } | { kind: "error"; message: string };
@@ -77,10 +78,12 @@ function Shell() {
         </div>
       </nav>
       <main
-        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
+        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" || screen === "settings" ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
       >
         {screen === "channels" ? (
           <ChannelsScreen />
+        ) : screen === "settings" ? (
+          <SettingsScreen />
         ) : screen === "artifacts" ? (
           <ArtifactsScreen empty={active.empty} />
         ) : (

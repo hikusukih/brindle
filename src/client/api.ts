@@ -56,3 +56,6 @@ export type Artifact = {
   /** True while the channel that made it still exists. */
   scopeLive: boolean;
 };
+
+export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+export type ModelList = { default: string | null; models: ModelInfo[] };
