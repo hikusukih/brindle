@@ -57,10 +57,10 @@ jobs:
         run: |
           docker run -d --name brindle -p 127.0.0.1:8787:8787 -v brindle-data:/data brindle
           for i in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:8787/api/greeting && break
+            curl -fsS http://127.0.0.1:8787/api/health && break
             sleep 1
           done
-          curl -fsS http://127.0.0.1:8787/api/greeting
+          curl -fsS http://127.0.0.1:8787/api/health
           curl -fsS http://127.0.0.1:8787/ | grep -qi '<html'
       - name: Container logs
         if: failure()
