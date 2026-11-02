@@ -1,0 +1,37 @@
+{
+  "name": "too-frequent-schedule-is-refused-before-a-card",
+  "description": "A schedule more often than every 15 minutes is sent back to the model before any card is shown.",
+  "messages": ["Run my brief every minute."],
+  "goal": {
+    "title": "Morning brief",
+    "brief": "A short brief of what matters, on a schedule."
+  },
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_schedule",
+            "arguments": {
+              "cron": "* * * * *",
+              "prompt": "Write the brief."
+            }
+          }
+        ]
+      },
+      {
+        "text": ["That is too often; the shortest gap is 15 minutes."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "schedules": 0,
+      "crons": [],
+      "toolResultIncludes": ["Error: that would fire more than once every 15 minutes."],
+      "eventTypes": ["message", "tool_call", "tool_result", "text"]
+    }
+  ]
+}

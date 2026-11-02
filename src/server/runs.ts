@@ -425,6 +425,9 @@ export class RunEngine {
           if (!tool) return { call, problem: `Error: no tool named ${call.name} is available.` };
           const invalid = validateArguments(tool, call.arguments);
           if (invalid) return { call, tool, problem: `Error: invalid arguments: ${invalid}.` };
+          // A precheck refusal is not a bad argument (an archived goal, a full cap), so it speaks for itself.
+          const refused = tool.precheck?.(call.arguments, { scope });
+          if (refused) return { call, tool, problem: refused };
           return { call, tool, ask: needsApproval(tool, call, scope) };
         });
         for (const { call, tool, ask } of checked) {

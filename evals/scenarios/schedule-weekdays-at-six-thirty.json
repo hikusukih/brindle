@@ -1,0 +1,37 @@
+{
+  "name": "schedule-weekdays-at-six-thirty",
+  "description": "\"Weekdays at 6:30\" becomes a five-field expression in the user's time zone.",
+  "messages": ["Run my brief on weekdays at 6:30."],
+  "goal": {
+    "title": "Morning brief",
+    "brief": "A short brief of what matters, on a schedule."
+  },
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_schedule",
+            "arguments": {
+              "cron": "30 6 * * 1-5",
+              "prompt": "Write the morning brief."
+            }
+          }
+        ]
+      },
+      {
+        "text": ["Scheduled for 6:30 on weekdays."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["approve"],
+      "schedules": 1,
+      "crons": ["30 6 * * 1-5"],
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}
