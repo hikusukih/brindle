@@ -1,6 +1,6 @@
 # Scheduled workers: spending a day's usage with only the clock starting sessions
 
-Status: accepted. The file keeps its first name so the PR history reads straight.
+Status: superseded. Never installed; retired in November 2026 (see `.agents/decisions.md`). The tasks that run are listed in `.agents/ops/schedule.md`. Kept as a record of the idea.
 
 ## Problem
 
