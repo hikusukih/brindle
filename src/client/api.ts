@@ -8,6 +8,8 @@ export type Channel = {
   archivedAt: string | null;
   /** A spec such as "openai:gpt-4o"; null follows the server default. */
   model: string | null;
+  /** The goal that owns this channel, or null for an ordinary one. Its rename, archive and delete go through the goal. */
+  goalId: string | null;
 };
 
 export type RunEvent = { id: string; runId: string; seq: number; type: string; data: string; createdAt: string };
