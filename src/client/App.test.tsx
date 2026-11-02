@@ -95,7 +95,7 @@ describe("App", () => {
       vi.fn(async (url: string) => Response.json(url.startsWith("/api/channels") ? list : { message: "", since: "" })),
     );
     render(<App />);
-    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    const nav = within(await screen.findByRole("navigation", { name: "Main" }));
     // Once in the rail; the bar (narrow) renders no children.
     const children = await nav.findAllByRole("link", { name: "Trip planning" });
     expect(children).toHaveLength(1);
@@ -124,7 +124,7 @@ describe("App", () => {
     );
     window.location.hash = "#/channels";
     render(<App />);
-    const nav = within(screen.getByRole("navigation", { name: "Main" }));
+    const nav = within(await screen.findByRole("navigation", { name: "Main" }));
     expect(await nav.findAllByRole("link", { name: "Budget" })).toHaveLength(1);
     const budgetRow = (await screen.findAllByText("Budget")).find((el) => el.closest("main"));
     const row = (budgetRow as HTMLElement).closest("li") as HTMLElement;
