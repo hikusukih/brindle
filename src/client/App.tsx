@@ -1,7 +1,10 @@
 import { useEffect, useState } from "react";
 import type { Greeting } from "../server/app";
+import { ArtifactsScreen } from "./Artifacts";
+import { api } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { GoalStateView, goalStateIdFromHash } from "./GoalState";
+import { LoginGate } from "./Login";
 import { type ScreenId, screenFromHash, screens } from "./screens";
 
 type State = { kind: "loading" } | { kind: "ready"; greeting: Greeting } | { kind: "error"; message: string };
@@ -11,11 +14,8 @@ function useServerStatus() {
 
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/greeting")
-      .then((res) => {
-        if (!res.ok) throw new Error(`Server answered ${res.status}`);
-        return res.json() as Promise<Greeting>;
-      })
+    // Through api() so the login token goes along; the route is gated like every other.
+    api<Greeting>("/api/greeting")
       .then((greeting) => !cancelled && setState({ kind: "ready", greeting }))
       .catch((err: unknown) => !cancelled && setState({ kind: "error", message: String(err) }));
     return () => {
@@ -58,7 +58,7 @@ function NavLinks({ current, orientation }: { current: ScreenId; orientation: "r
   );
 }
 
-export function App() {
+function Shell() {
   const { screen, hash } = useScreen();
   const status = useServerStatus();
   const stateGoal = goalStateIdFromHash(hash);
@@ -79,12 +79,14 @@ export function App() {
         </div>
       </nav>
       <main
-        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || stateGoal ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
+        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" || stateGoal ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
       >
         {screen === "channels" ? (
           <ChannelsScreen />
         ) : stateGoal ? (
           <GoalStateView goalId={stateGoal} />
+        ) : screen === "artifacts" ? (
+          <ArtifactsScreen empty={active.empty} />
         ) : (
           <>
             <h1 className="text-2xl font-semibold">{active.label}</h1>
@@ -104,5 +106,13 @@ export function App() {
         </div>
       </main>
     </div>
+  );
+}
+
+export function App() {
+  return (
+    <LoginGate>
+      <Shell />
+    </LoginGate>
   );
 }

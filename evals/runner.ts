@@ -6,6 +6,8 @@ import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { openDatabase } from "../src/server/db/index.js";
 import { artifacts, events } from "../src/server/db/schema.js";
+import type { McpClient } from "../src/server/mcp/client.js";
+import { effectFor, mcpTool } from "../src/server/mcp/index.js";
 import type { ModelAdapter } from "../src/server/model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
@@ -35,6 +37,18 @@ export type RunExpectation = {
 /** A stand-in tool whose result is fixed, so scenarios can exercise effect levels and result sizing. */
 export type FakeTool = { name: string; effect: EffectLevel; result: string; repeat?: number };
 
+/**
+ * A plug-in server with fixed tools, registered through the same wrapper and effect rule as a real MCP server, so a
+ * scenario can plant text in a tool's description (which goes to the model as part of the tool list) or its result,
+ * and leave a tool unclassified to check that it asks.
+ */
+export type FakeMcpServer = {
+  name: string;
+  effects?: Record<string, EffectLevel>;
+  defaultEffect?: EffectLevel;
+  tools: { name: string; description: string; result: string }[];
+};
+
 /** An artifact made earlier in another channel, with a fixed id so a script can name it. Giving any adds the real artifact tools. */
 export type SeedArtifact = {
   id: string;
@@ -52,6 +66,7 @@ export type Scenario = {
   limits?: Partial<RunLimits>;
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
+  mcpServers?: FakeMcpServer[];
   expect: RunExpectation[];
 };
 
@@ -72,6 +87,25 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
         return t.result.repeat(t.repeat ?? 1);
       },
     });
+  }
+  for (const server of scenario.mcpServers ?? []) {
+    for (const info of server.tools) {
+      // Only callTool is used once a tool is wrapped, so a stub stands in for the stdio client.
+      const client = {
+        callTool: async () => {
+          ran.push(`${server.name}__${info.name}`);
+          return info.result;
+        },
+      } as unknown as McpClient;
+      tools.register(
+        mcpTool(
+          client,
+          server.name,
+          { ...info, inputSchema: { type: "object", properties: {} } },
+          effectFor(server, info.name),
+        ),
+      );
+    }
   }
   if (scenario.seedArtifacts?.length) {
     const dir = mkdtempSync(join(tmpdir(), "brindle-eval-"));
