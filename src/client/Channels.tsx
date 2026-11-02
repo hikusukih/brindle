@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, type Channel, type Run, type RunEvent } from "./api";
+import { type Artifact, api, type Channel, type Run, type RunEvent } from "./api";
+import { AuthedEventSource } from "./events";
 import { channelIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -35,6 +36,12 @@ function ChannelList() {
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<{
+    channel: Channel;
+    artifacts: Artifact[];
+    choice: "keep" | "all" | "some";
+    picked: string[];
+  } | null>(null);
 
   const load = useCallback(() => {
     api<Channel[]>(`/api/channels?archived=${showArchived}`)
@@ -54,6 +61,26 @@ function ChannelList() {
     } catch (e) {
       setProblem((e as Error).message);
     }
+  };
+
+  // A channel that made no artifacts gets the plain confirm; otherwise the user picks what happens to them, keeping all by default.
+  const askDelete = async (c: Channel) => {
+    try {
+      const made = await api<Artifact[]>(`/api/channels/${c.id}/artifacts`);
+      if (made.length) setDeleting({ channel: c, artifacts: made, choice: "keep", picked: [] });
+      else if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
+        await act(`/api/channels/${c.id}`, "DELETE");
+    } catch (e) {
+      setProblem((e as Error).message);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const { channel, artifacts, choice, picked } = deleting;
+    const ids = choice === "all" ? artifacts.map((a) => a.id) : choice === "some" ? picked : [];
+    setDeleting(null);
+    await act(`/api/channels/${channel.id}`, "DELETE", ids.length ? { deleteArtifacts: ids } : undefined);
   };
 
   const create = async (e: FormEvent) => {
@@ -83,6 +110,62 @@ function ChannelList() {
         </button>
       </form>
       <Problem message={problem} />
+      {deleting && (
+        <section aria-label="Delete channel" className="flex flex-col gap-2 rounded-lg border border-red-200 p-3">
+          <h2 className="font-medium">
+            Delete "{deleting.channel.name}" and its history? It made {deleting.artifacts.length}{" "}
+            {deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.
+          </h2>
+          {(
+            [
+              ["keep", "Keep all artifacts"],
+              ["all", "Delete all artifacts"],
+              ["some", "Choose which to delete"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} className="flex min-h-11 items-center gap-2">
+              <input
+                type="radio"
+                name="artifact-choice"
+                checked={deleting.choice === value}
+                onChange={() => setDeleting({ ...deleting, choice: value })}
+              />
+              {label}
+            </label>
+          ))}
+          {deleting.choice === "some" && (
+            <ul className="flex flex-col">
+              {deleting.artifacts.map((a) => (
+                <li key={a.id}>
+                  <label className="flex min-h-11 items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={deleting.picked.includes(a.id)}
+                      onChange={(e) =>
+                        setDeleting({
+                          ...deleting,
+                          picked: e.target.checked
+                            ? [...deleting.picked, a.id]
+                            : deleting.picked.filter((x) => x !== a.id),
+                        })
+                      }
+                    />
+                    {a.title}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <button type="button" className={`${quiet} text-red-700`} onClick={() => void confirmDelete()}>
+              Delete channel
+            </button>
+            <button type="button" className={quiet} onClick={() => setDeleting(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
       <div className="flex gap-2">
         <button type="button" className={quiet} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
           Active
@@ -145,14 +228,7 @@ function ChannelList() {
                   </button>
                 </>
               )}
-              <button
-                type="button"
-                className={`${quiet} text-red-700`}
-                onClick={() => {
-                  if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
-                    void act(`/api/channels/${c.id}`, "DELETE");
-                }}
-              >
+              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
                 Delete
               </button>
             </div>
@@ -204,6 +280,80 @@ function EventLine({ event }: { event: RunEvent }) {
   }
 }
 
+type SentContext = {
+  step: number;
+  report: {
+    window: number;
+    budget: number;
+    layers: { name: string; tokens: number }[];
+    runsDropped: number;
+    breaks: string[];
+    overflow: { layer: string; detail: string }[];
+  };
+  messages: SentMessage[] | null;
+  tools: { name: string; description: string; parameters: unknown }[] | null;
+};
+
+type SentMessage = {
+  role: string;
+  content: string;
+  toolCalls?: { id: string; name: string; arguments: unknown }[];
+  toolCallId?: string;
+};
+
+/** One message as the model received it, tool calls and the call a result answers included. */
+function formatSent(m: SentMessage): string {
+  const head = m.role === "tool" ? `tool (answers ${m.toolCallId}):` : `${m.role}:`;
+  const calls = (m.toolCalls ?? []).map((c) => `\n-> call ${c.id} ${c.name} ${JSON.stringify(c.arguments)}`).join("");
+  return `${head} ${m.content}${calls}`;
+}
+
+/** What the model was sent for one run: layer sizes, and the exact messages while the server still keeps them. */
+function SentView({ runId }: { runId: string }) {
+  const [sent, setSent] = useState<SentContext[] | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const load = () =>
+    api<SentContext[]>(`/api/runs/${runId}/context`).then(setSent, (e: Error) => setProblem(e.message));
+  return (
+    <details className="text-xs text-slate-600" onToggle={(e) => e.currentTarget.open && !sent && load()}>
+      <summary className="cursor-pointer">What was sent</summary>
+      <Problem message={problem} />
+      {sent?.length === 0 && <p>No request was recorded for this run.</p>}
+      {sent?.map((req) => (
+        <div key={req.step} className="mt-2 flex flex-col gap-1">
+          <p>
+            Step {req.step}: {req.report.layers.map((l) => `${l.name} ${l.tokens}`).join(", ")} of {req.report.budget}{" "}
+            tokens
+            {req.report.runsDropped ? `; ${req.report.runsDropped} older run(s) left out` : ""}
+            {req.report.breaks.length ? `; prompt start changed: ${req.report.breaks.join(", ")}` : ""}
+          </p>
+          {req.messages ? (
+            <>
+              <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-slate-100 p-2">
+                {req.messages.map(formatSent).join("\n\n")}
+              </pre>
+              {req.tools && (
+                <details>
+                  <summary className="cursor-pointer">
+                    Tools offered ({req.tools.map((t) => t.name).join(", ")})
+                  </summary>
+                  <pre className="overflow-x-auto whitespace-pre-wrap rounded-lg bg-slate-100 p-2">
+                    {JSON.stringify(req.tools, null, 2)}
+                  </pre>
+                </details>
+              )}
+            </>
+          ) : req.report.overflow.some((o) => o.layer === "current_run") ? (
+            <p>Nothing was sent: {req.report.overflow.map((o) => o.detail).join("; ")}.</p>
+          ) : (
+            <p>The exact messages are only kept for a channel's 20 newest runs.</p>
+          )}
+        </div>
+      ))}
+    </details>
+  );
+}
+
 function ApprovalCard(props: {
   tool: string;
   reason: string;
@@ -245,7 +395,7 @@ function ChannelView({ id }: { id: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   const [modelText, setModelText] = useState("");
-  const source = useRef<EventSource | null>(null);
+  const source = useRef<AuthedEventSource | null>(null);
 
   const reload = useCallback(async () => {
     setRuns(await api<Run[]>(`/api/channels/${id}/runs`));
@@ -273,7 +423,7 @@ function ChannelView({ id }: { id: string }) {
   const follow = useCallback(
     (runId: string) => {
       source.current?.close();
-      const es = new EventSource(`/api/runs/${runId}/events`);
+      const es = new AuthedEventSource(`/api/runs/${runId}/events`);
       source.current = es;
       const take = (e: Event) => {
         // "error" is also the name of EventSource's own connection failure, which carries no data.
@@ -299,7 +449,7 @@ function ChannelView({ id }: { id: string }) {
         reload().catch((err: unknown) => setProblem((err as Error).message));
       });
       es.onerror = () => {
-        if (es.readyState === EventSource.CLOSED) {
+        if (es.readyState === AuthedEventSource.CLOSED) {
           setProblem("Lost the connection to the server.");
           reload().catch(() => {});
         }
@@ -404,6 +554,7 @@ function ChannelView({ id }: { id: string }) {
                 </p>
               )}
             {run.status === "cancelled" && <p className="text-xs text-slate-500">Cancelled.</p>}
+            {run.status !== "running" && run.status !== "waiting" && <SentView runId={run.id} />}
           </section>
         ))}
       </div>

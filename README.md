@@ -4,7 +4,7 @@
 
 A self-hosted personal agent with a calm, phone-friendly home: persistent **channels** for conversations, **goals** that keep their own state and act on a schedule, a **feed** of what scheduled work found (also published as RSS), one gallery of **artifacts**, and opt-in **suggestions**. Models are pluggable; credentials go through a key manager that keeps them out of the model's sight.
 
-Early and under construction. The design is in `docs/architecture.md` and the work queue is `.agents/PLAN.md`.
+Early and under construction. The design is in `docs/architecture.md` and the work queue is `.agents/plan/`, one file per box.
 
 ## Quickstart with Docker
 
@@ -20,9 +20,9 @@ docker run -d --name brindle --restart unless-stopped \
 
 Open `http://127.0.0.1:8787`. The page shows a greeting from the server and the time it first started.
 
-- Brindle has no login yet. Inside the container it listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only. Don't publish it more widely until authentication lands.
+- Every `/api` route except `/api/health` needs a login token, sent in an `Authorization: Bearer` header (never a cookie). Set `BRINDLE_TOKEN` (at least 16 characters) to choose it, for example `-e BRINDLE_TOKEN=...` on `docker run`. Otherwise the first start generates one and prints it once in the server output (`docker logs brindle`); only its hash is kept, so if you lose it, set `BRINDLE_TOKEN` to replace it. The page asks for the token once and keeps it for that browser tab's session. The server compares tokens in constant time. Inside the container the server listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only; put it behind HTTPS before exposing it further, since the token travels with every request.
 - Everything Brindle keeps lives in the `brindle-data` volume, mounted at `/data`. Removing the container keeps it; `docker volume rm brindle-data` deletes it.
-- To upgrade, pull the new code, rebuild the image, then `docker rm -f brindle` and run the same `docker run` again. Database migrations apply on startup.
+- To upgrade, pull the new code, rebuild the image, then `docker rm -f brindle` and run the same `docker run` again. Database migrations apply on startup. An install from before logins existed gets its token on the first start of the new version: it is printed once in the server output, or set `BRINDLE_TOKEN` to choose it.
 - The image runs as an unprivileged user and needs no compiler: the SQLite driver's prebuilt binaries cover amd64 and arm64.
 
 ### Moving an install from Bridle
@@ -74,6 +74,26 @@ Each turn answers one model call and the script does not loop, so a fixture of N
 ### Tools
 
 The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
+
+## Plug-in tools over MCP
+
+Put a `mcp.json` in the data directory to add tools from MCP servers started over stdio:
+
+```json
+{
+  "servers": {
+    "notes": {
+      "command": "npx",
+      "args": ["-y", "example-notes-mcp-server"],
+      "env": ["NOTES_API_KEY"],
+      "effects": { "search_notes": "read", "add_note": "local" },
+      "defaultEffect": "external"
+    }
+  }
+}
+```
+
+Each tool appears to the model as `<server>__<tool>`. You assign its effect level in `effects`: `read` and `local` run at once, `external` waits for your approval. A tool you haven't classified takes `defaultEffect`, which is `external` unless you say otherwise. The server's process gets only `PATH`, `HOME` and the variables named in `env`; secrets come from the environment, never from the file. A server that fails to start is skipped with a warning. Restart Brindle after editing the file.
 
 ## Development
 

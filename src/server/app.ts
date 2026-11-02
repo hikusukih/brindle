@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
-import type { ArtifactStore } from "./artifacts.js";
+import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
+import { requireToken } from "./auth.js";
 import {
   archiveChannel,
   ChannelError,
@@ -15,11 +16,13 @@ import {
   restoreChannel,
   setChannelModel,
 } from "./channels.js";
+import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
 import {
   archiveGoal,
   briefHistory,
+  cancelGoalRuns,
   createGoal,
   deleteGoal,
   editGoal,
@@ -31,6 +34,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
+import type { Scheduler } from "./scheduler.js";
 import { ScopeStatementError } from "./scope-statements.js";
 
 export type Greeting = {
@@ -46,12 +50,21 @@ type AppOptions = {
   models?: { defaultSpec?: string; validate: (spec: string) => void };
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
+  // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
+  scheduler?: Scheduler;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
+  // SHA-256 of the login token. Absent only in tests; main.ts always passes it.
+  authHash?: Buffer;
 };
 
-export function createApp({ db, engine, models, artifacts, clientRoot }: AppOptions) {
+export function createApp({ db, engine, models, artifacts, scheduler, clientRoot, authHash }: AppOptions) {
   const app = new Hono();
+
+  if (authHash) app.use("/api/*", requireToken(authHash));
+  app.get("/api/health", (c) => c.json({ ok: true }));
+  // Lets the login form check a token without loading anything else.
+  app.get("/api/session", (c) => c.body(null, 204));
 
   app.get("/api/greeting", (c) => {
     const row = db.select().from(appMeta).where(eq(appMeta.key, "first_started_at")).get();
@@ -97,6 +110,8 @@ export function createApp({ db, engine, models, artifacts, clientRoot }: AppOpti
     const body = (await c.req.json().catch(() => ({}))) as { text?: unknown };
     return c.json(needEngine().start(c.req.param("id"), body.text), 201);
   });
+  // What each request of the run sent: layer sizes always, the exact messages for a channel's 20 newest runs.
+  app.get("/api/runs/:id/context", (c) => c.json(runContext(db, c.req.param("id"))));
   app.get("/api/runs/:id", (c) => c.json(needEngine().get(c.req.param("id"))));
   app.post("/api/runs/:id/approvals/:callId", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown };
@@ -164,6 +179,35 @@ export function createApp({ db, engine, models, artifacts, clientRoot }: AppOpti
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
   });
+  app.get("/api/artifacts", (c) => {
+    const kind = c.req.query("kind");
+    const scope = c.req.query("scope");
+    if (kind && !artifactKinds.includes(kind as ArtifactKind))
+      throw new HTTPException(400, { message: "Unknown kind." });
+    if (scope && scope !== "channel" && scope !== "goal") throw new HTTPException(400, { message: "Unknown scope." });
+    return c.json(artifacts?.list({ kind, scope }) ?? []);
+  });
+  // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
+  // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
+  app.get("/api/artifacts/:id/file", (c) => {
+    const artifact = artifacts?.get(c.req.param("id"));
+    const bytes = artifact && artifacts?.bytes(artifact);
+    if (!artifact || !bytes) throw new HTTPException(404, { message: "No such artifact." });
+    const shownAsText = artifact.mime === "text/plain" || artifact.mime === "text/markdown";
+    const download = `attachment; filename="${
+      artifact.file
+        .split("/")
+        .pop()
+        ?.replace(/[^\w.-]/g, "_") ?? "artifact"
+    }"`;
+    return c.body(new Uint8Array(bytes), 200, {
+      // Text and Markdown go out as text/plain so no browser treats them as markup.
+      "content-type": shownAsText ? "text/plain; charset=utf-8" : `${artifact.mime}; charset=utf-8`,
+      "content-security-policy": "sandbox",
+      "x-content-type-options": "nosniff",
+      ...(shownAsText ? {} : { "content-disposition": download }),
+    });
+  });
   app.get("/api/channels/:id/artifacts", (c) => {
     const id = c.req.param("id");
     getChannel(db, id);
@@ -193,10 +237,17 @@ export function createApp({ db, engine, models, artifacts, clientRoot }: AppOpti
   app.post("/api/goals/:id/brief-versions/:version/restore", (c) =>
     c.json(restoreBrief(db, c.req.param("id"), Number(c.req.param("version")))),
   );
-  app.post("/api/goals/:id/archive", (c) => c.json(archiveGoal(db, c.req.param("id"))));
-  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"))));
-  app.delete("/api/goals/:id", (c) => {
-    deleteGoal(db, c.req.param("id"));
+  // A run going in the goal's channel is cancelled first, so it cannot write to a goal that is being archived or removed.
+  app.post("/api/goals/:id/archive", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    return c.json(archiveGoal(db, id, new Date(), scheduler));
+  });
+  app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"), new Date(), scheduler)));
+  app.delete("/api/goals/:id", async (c) => {
+    const id = c.req.param("id");
+    if (engine) await cancelGoalRuns(db, engine, id);
+    deleteGoal(db, id, scheduler);
     return c.body(null, 204);
   });
 

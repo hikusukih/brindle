@@ -53,6 +53,42 @@ export const events = sqliteTable(
   (t) => [uniqueIndex("events_run_seq_idx").on(t.runId, t.seq)],
 );
 
+// A goal's recurring task. goal_id is a plain id until the goals table exists (P4.3); the scheduler never looks inside it.
+export const schedules = sqliteTable("schedules", {
+  id: text("id").primaryKey(),
+  goalId: text("goal_id").notNull(),
+  // Five fields, read in the user's time zone.
+  cron: text("cron").notNull(),
+  prompt: text("prompt").notNull(),
+  // channel in Phase 4; feed and digest arrive later as new values.
+  destination: text("destination").notNull(),
+  enabled: integer("enabled", { mode: "boolean" }).notNull(),
+  nextFireAt: text("next_fire_at"),
+  // catch_up_once | skip
+  missedPolicy: text("missed_policy").notNull(),
+  // Set when archiving the goal turned this schedule off, so restoring turns back on exactly those and not ones the user had off.
+  suspendedByArchive: integer("suspended_by_archive", { mode: "boolean" }).notNull().default(false),
+  createdAt: text("created_at").notNull(),
+});
+
+// Both the waiting list and the log of what fired. The unique index makes double-firing an occurrence impossible.
+export const scheduleFires = sqliteTable(
+  "schedule_fires",
+  {
+    id: text("id").primaryKey(),
+    scheduleId: text("schedule_id")
+      .notNull()
+      .references(() => schedules.id, { onDelete: "cascade" }),
+    dueAt: text("due_at").notNull(),
+    // waiting | started | missed | skipped_busy | skipped_disabled | failed_to_start
+    state: text("state").notNull(),
+    runId: text("run_id"),
+    createdAt: text("created_at").notNull(),
+    updatedAt: text("updated_at").notNull(),
+  },
+  (t) => [uniqueIndex("schedule_fires_due_idx").on(t.scheduleId, t.dueAt)],
+);
+
 // An ongoing project with its own channel. The brief lives in scope_statements; the state document arrives with P4.4.
 export const goals = sqliteTable("goals", {
   id: text("id").primaryKey(),
@@ -107,4 +143,30 @@ export const artifacts = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [index("artifacts_scope_idx").on(t.scope, t.scopeId), index("artifacts_created_idx").on(t.createdAt)],
+);
+
+// One row per model request: what assembly counted and, for the most recent runs of a channel, the exact messages sent.
+export const contextReports = sqliteTable(
+  "context_reports",
+  {
+    id: text("id").primaryKey(),
+    runId: text("run_id")
+      .notNull()
+      .references(() => runs.id, { onDelete: "cascade" }),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    step: integer("step").notNull(),
+    // JSON ContextReport.
+    report: text("report").notNull(),
+    // JSON Message[]; set to null once the run falls out of the channel's most recent 20.
+    messages: text("messages"),
+    // JSON ToolDefinition[] sent with the request, kept and pruned with messages; null when none were sent.
+    tools: text("tools"),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [
+    index("context_reports_channel_idx").on(t.channelId, t.createdAt),
+    index("context_reports_run_idx").on(t.runId, t.step),
+  ],
 );
