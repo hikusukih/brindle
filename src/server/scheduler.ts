@@ -68,6 +68,7 @@ export class Scheduler {
       enabled: args.enabled ?? true,
       nextFireAt: next.toISOString(),
       missedPolicy: args.missedPolicy ?? "catch_up_once",
+      suspendedByArchive: false,
       createdAt: now.toISOString(),
     };
     this.db.insert(schedules).values(row).run();
@@ -99,6 +100,38 @@ export class Scheduler {
     if (!schedule) throw new SchedulerError("No such schedule.");
     const nextFireAt = enabled ? this.after(schedule.cron, now).toISOString() : null;
     this.db.update(schedules).set({ enabled, nextFireAt }).where(eq(schedules.id, scheduleId)).run();
+  }
+
+  /** Archiving a goal: turn off its enabled schedules and remember which, so restoring brings back exactly those. */
+  suspendGoal(goalId: string) {
+    this.db
+      .update(schedules)
+      .set({ enabled: false, nextFireAt: null, suspendedByArchive: true })
+      .where(and(eq(schedules.goalId, goalId), eq(schedules.enabled, true)))
+      .run();
+  }
+
+  /** Restoring a goal: the remembered schedules resume from their next occurrence after now, with no catch-up for the time archived. */
+  resumeGoal(goalId: string, now = new Date()) {
+    const suspended = this.db
+      .select()
+      .from(schedules)
+      .where(and(eq(schedules.goalId, goalId), eq(schedules.suspendedByArchive, true)))
+      .all();
+    for (const schedule of suspended) {
+      this.db
+        .update(schedules)
+        .set({ enabled: true, nextFireAt: this.after(schedule.cron, now).toISOString(), suspendedByArchive: false })
+        .where(eq(schedules.id, schedule.id))
+        .run();
+    }
+  }
+
+  /** Deleting a goal removes its schedules and their fire log. */
+  removeGoal(goalId: string) {
+    const ids = this.db.select({ id: schedules.id }).from(schedules).where(eq(schedules.goalId, goalId)).all();
+    for (const { id } of ids) this.db.delete(scheduleFires).where(eq(scheduleFires.scheduleId, id)).run();
+    this.db.delete(schedules).where(eq(schedules.goalId, goalId)).run();
   }
 
   /** What fired, oldest first. */
