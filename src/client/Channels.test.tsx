@@ -4,6 +4,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel, Run } from "./api";
 import { ChannelsScreen } from "./Channels";
 
+// The real stream reads over fetch; here the view gets the fake below, handed in through a global because vi.mock is hoisted.
+vi.mock("./events", () => ({
+  get AuthedEventSource() {
+    return (globalThis as unknown as { FakeSource: unknown }).FakeSource;
+  },
+}));
+
 const stamp = "2026-01-02T03:04:05.000Z";
 const channel = (id: string, name: string, archivedAt: string | null = null): Channel => ({
   id,
@@ -14,7 +21,7 @@ const channel = (id: string, name: string, archivedAt: string | null = null): Ch
   model: null,
 });
 
-// Stands in for the browser's EventSource; a test pushes events through the most recent instance.
+// Stands in for the authorized event stream; a test pushes events through the most recent instance.
 class FakeSource {
   static last: FakeSource | undefined;
   static CLOSED = 2;
@@ -53,7 +60,7 @@ function stubFetch(routes: Record<string, Handler>) {
 }
 
 beforeEach(() => {
-  vi.stubGlobal("EventSource", FakeSource);
+  vi.stubGlobal("FakeSource", FakeSource);
   vi.stubGlobal(
     "confirm",
     vi.fn(() => true),
@@ -94,6 +101,7 @@ describe("channel list", () => {
       "/api/channels?archived=false": () => Response.json([channel("c1", "Plans")]),
       "/api/channels?archived=true": () => Response.json([channel("c2", "Old", stamp)]),
       "/api/channels/c1": () => new Response(null, { status: 204 }),
+      "/api/channels/c1/artifacts": () => Response.json([]),
       "/api/channels/c1/archive": () => Response.json({}),
       "/api/channels/c2/restore": () => Response.json({}),
     });
@@ -113,6 +121,37 @@ describe("channel list", () => {
     fireEvent.click(screen.getByRole("button", { name: "Archived" }));
     fireEvent.click(await screen.findByRole("button", { name: "Restore" }));
     await waitFor(() => expect(calls).toContain("POST /api/channels/c2/restore"));
+  });
+
+  it("asks what to do with the artifacts a channel made, keeping them by default", async () => {
+    const art = (id: string, title: string) => ({ id, title });
+    let deleteBody: unknown = "unset";
+    const calls = stubFetch({
+      "/api/channels?archived=false": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/artifacts": () => Response.json([art("a1", "Itinerary"), art("a2", "Budget")]),
+      "/api/channels/c1": (_m, body) => {
+        deleteBody = body;
+        return new Response(null, { status: 204 });
+      },
+    });
+    render(<ChannelsScreen />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    expect(await screen.findByRole("radio", { name: "Keep all artifacts" })).toHaveProperty("checked", true);
+    fireEvent.click(screen.getByRole("button", { name: "Delete channel" }));
+    await waitFor(() => expect(calls).toContain("DELETE /api/channels/c1"));
+    expect(deleteBody).toBeUndefined();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Choose which to delete" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Budget" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete channel" }));
+    await waitFor(() => expect(deleteBody).toEqual({ deleteArtifacts: ["a2"] }));
+
+    fireEvent.click(await screen.findByRole("button", { name: "Delete" }));
+    fireEvent.click(await screen.findByRole("radio", { name: "Delete all artifacts" }));
+    fireEvent.click(screen.getByRole("button", { name: "Delete channel" }));
+    await waitFor(() => expect(deleteBody).toEqual({ deleteArtifacts: ["a1", "a2"] }));
   });
 
   it("shows the server's message when an action fails", async () => {
