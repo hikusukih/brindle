@@ -66,6 +66,8 @@ export const schedules = sqliteTable("schedules", {
   nextFireAt: text("next_fire_at"),
   // catch_up_once | skip
   missedPolicy: text("missed_policy").notNull(),
+  // Set when archiving the goal turned this schedule off, so restoring turns back on exactly those and not ones the user had off.
+  suspendedByArchive: integer("suspended_by_archive", { mode: "boolean" }).notNull().default(false),
   createdAt: text("created_at").notNull(),
 });
 
