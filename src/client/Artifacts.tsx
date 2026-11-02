@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { type Artifact, api } from "./api";
+import { type Artifact, api, fetchArtifactFile } from "./api";
 
 const kinds = ["document", "code", "data", "page", "link"] as const;
 const scopes = ["channel", "goal"] as const;
@@ -13,6 +13,74 @@ function Source({ a }: { a: Artifact }) {
       from <a href={`#/channels/${a.scopeId}`}>{a.scopeName}</a>
       {a.runId && `, run ${a.runId.slice(0, 8)}`}
     </>
+  );
+}
+
+type Opened = { kind: "text"; text: string } | { kind: "download"; url: string; name: string };
+
+// A model wrote these files, perhaps from fetched web text. They are only ever shown as text through React (which
+// escapes it) or handed over as a download of opaque bytes; nothing here puts a file's content into the page as markup.
+function OpenArtifact({ a }: { a: Artifact }) {
+  const [opened, setOpened] = useState<Opened | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    return () => {
+      if (opened?.kind === "download") URL.revokeObjectURL(opened.url);
+    };
+  }, [opened]);
+
+  const open = async () => {
+    setBusy(true);
+    try {
+      const blob = await fetchArtifactFile(a.id);
+      if (a.kind === "document" || a.kind === "code") {
+        setOpened({ kind: "text", text: await blob.text() });
+      } else {
+        const bytes = new Blob([blob], { type: "application/octet-stream" });
+        setOpened({
+          kind: "download",
+          url: URL.createObjectURL(bytes),
+          name: a.title.replace(/[^\w.-]+/g, "_") || "artifact",
+        });
+      }
+      setProblem(null);
+    } catch (e) {
+      setProblem((e as Error).message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 flex flex-col gap-2">
+      {!opened && (
+        <button
+          type="button"
+          onClick={open}
+          disabled={busy}
+          className="min-h-11 self-start rounded-lg border border-slate-300 px-3 text-sm font-medium"
+        >
+          Open
+        </button>
+      )}
+      {problem && (
+        <p role="alert" className="text-sm text-red-800">
+          {problem}
+        </p>
+      )}
+      {opened?.kind === "text" && (
+        <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">
+          {opened.text}
+        </pre>
+      )}
+      {opened?.kind === "download" && (
+        <a href={opened.url} download={opened.name} className="min-h-11 self-start text-sm font-medium underline">
+          Download {a.title}
+        </a>
+      )}
+    </div>
   );
 }
 
@@ -81,6 +149,7 @@ export function ArtifactsScreen({ empty }: { empty: { title: string; body: strin
             <div className="text-sm text-slate-600">
               {a.kind} · {new Date(a.createdAt).toLocaleString()} · <Source a={a} />
             </div>
+            <OpenArtifact a={a} />
           </li>
         ))}
       </ul>
