@@ -47,7 +47,18 @@ type AppOptions = {
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
   // What channels may be set to use; absent, setting a channel's model is refused.
-  models?: { defaultSpec?: string; validate: (spec: string) => void };
+  models?: {
+    defaultSpec?: string;
+    validate: (spec: string) => void;
+    // The numbers a channel's model runs under, for the channel view; absent, the view shows none.
+    settings?: (spec: string | null) => {
+      model: string;
+      contextWindow: number;
+      maxSteps: number;
+      maxTokens: number;
+      maxMillis: number;
+    };
+  };
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
@@ -162,6 +173,18 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
     return c.json(renameChannel(db, c.req.param("id"), await nameFrom(c)));
   });
   app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null }));
+  app.get("/api/channels/:id/model-settings", (c) => {
+    const channel = getChannel(db, c.req.param("id"));
+    const s = models?.settings?.(channel.model);
+    if (!s) return c.json(null);
+    return c.json({
+      model: s.model,
+      contextWindow: s.contextWindow,
+      maxSteps: s.maxSteps,
+      maxTokens: s.maxTokens,
+      maxMillis: s.maxMillis,
+    });
+  });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
     const validate =

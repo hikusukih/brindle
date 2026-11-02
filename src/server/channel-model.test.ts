@@ -30,6 +30,30 @@ describe("per-channel model", () => {
     expect(((await cleared.json()) as { model: null }).model).toBeNull();
   });
 
+  it("tells the channel view which window and limits its model runs under", async () => {
+    const db = openDatabase(":memory:");
+    const settings = (spec: string | null) => ({
+      model: spec ?? "scripted",
+      contextWindow: spec === "scripted" || spec === null ? 8192 : 32_000,
+      maxSteps: 10,
+      maxTokens: 100_000,
+      maxMillis: 300_000,
+    });
+    const app = createApp({ db, models: { defaultSpec: "scripted", validate: () => {}, settings } });
+    const channel = createChannel(db, "Test");
+    expect(await (await app.request(`/api/channels/${channel.id}/model-settings`)).json()).toEqual({
+      model: "scripted",
+      contextWindow: 8192,
+      maxSteps: 10,
+      maxTokens: 100_000,
+      maxMillis: 300_000,
+    });
+    // Without settings configured the view gets null, not a guess.
+    const bare = createApp({ db });
+    expect(await (await bare.request(`/api/channels/${channel.id}/model-settings`)).json()).toBeNull();
+    expect((await app.request("/api/channels/nope/model-settings")).status).toBe(404);
+  });
+
   it("refuses a model that can't be built, such as one whose key is missing", async () => {
     const { app, channel, db } = setup({});
     const res = await post(app, `/api/channels/${channel.id}/model`, { model: "anthropic:claude-test" });

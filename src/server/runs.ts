@@ -25,8 +25,10 @@ export type RunLimits = {
   /** Input plus output tokens summed over the run. */
   maxTokens: number;
   maxMillis: number;
-  /** The model's context window in tokens; a per-model setting arrives later. */
+  /** The model's context window in tokens. */
   contextWindow: number;
+  /** The spec these numbers belong to, named in each context report; absent: "default". */
+  model?: string;
   /** How long a run may wait for an approval before it ends as "approval not given". */
   approvalMillis: number;
 };
@@ -143,7 +145,8 @@ export class RunEngine {
   constructor(
     private readonly db: Db,
     private readonly model: ModelSource,
-    private readonly limits: RunLimits = defaultLimits,
+    // One set for every channel, or a function that picks by the channel's model spec (null: the default model).
+    private readonly limitSource: RunLimits | ((spec: string | null) => RunLimits) = defaultLimits,
     private readonly tools: ToolRegistry = new ToolRegistry(),
   ) {}
 
@@ -264,6 +267,10 @@ export class RunEngine {
     this.settled.set(run.id, this.loop(run.id, run.channelId, model, past, current, controller, resume));
   }
 
+  private limitsFor(spec: string | null): RunLimits {
+    return typeof this.limitSource === "function" ? this.limitSource(spec) : this.limitSource;
+  }
+
   private modelFor(spec: string | null): ModelAdapter {
     try {
       return typeof this.model === "function" ? this.model(spec) : this.model;
@@ -339,7 +346,8 @@ export class RunEngine {
     controller: AbortController,
     resume?: Resume,
   ): Promise<void> {
-    const { maxSteps, maxTokens, maxMillis } = this.limits;
+    const limits = this.limitsFor(getChannel(this.db, channelId).model);
+    const { maxSteps, maxTokens, maxMillis } = limits;
     const state: LiveRun = { decisions: new Map(resume?.decisions), waiters: new Map() };
     this.live.set(runId, state);
     const requested = new Set(resume?.requested);
@@ -377,9 +385,9 @@ export class RunEngine {
             assembled = assembleContext({
               past,
               current: messages,
-              window: this.limits.contextWindow,
+              window: limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
-              model: getChannel(this.db, channelId).model ?? "default",
+              model: limits.model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
             });
@@ -509,7 +517,7 @@ export class RunEngine {
   /** Resolves when the user answers the call; rejects with the abort reason on cancel or when the wait runs out. */
   private awaitDecision(callId: string, state: LiveRun, controller: AbortController): Promise<void> {
     const signal = controller.signal;
-    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limits.approvalMillis);
+    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limitsFor(null).approvalMillis);
     return new Promise<void>((resolve, reject) => {
       const onAbort = () => reject(signal.reason);
       if (signal.aborted) return onAbort();

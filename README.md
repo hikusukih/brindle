@@ -58,6 +58,10 @@ OPENAI_API_KEY=... BRINDLE_MODEL=openai:<model> npm start
 
 Each channel shows the model it uses under its name, and a channel can be set to a different one with the same `provider:name` spelling; clearing the field returns it to the default. A model whose key is missing is refused when you set it. With no default and no choice on the channel, sending a message answers 503.
 
+### Window and limits per model
+
+Put a `model-settings.json` in the data directory to set numbers per model, keyed by the same `provider:name` spec. Every field is optional: `contextWindow` (tokens), `maxSteps`, `maxTokens`, `maxMillis` (a run's time limit), `housekeepingMillis` and `warmCache`. A model with no entry gets defaults chosen for a CPU-only llama.cpp host: a 32,000-token window, 10 steps, 100,000 tokens, 5 minutes per run. The file holds no secrets. When `BRINDLE_OPENAI_BASE_URL` points at a local server and no window is set, the server's own is asked for at startup (`/props`, as llama.cpp serves it) and used; a configured window larger than the server's stops the server from starting, with a message saying so. Each channel shows its model's window and limits under its name.
+
 ### Trying runs with the scripted model
 
 For development and acceptance without a key, set `BRINDLE_MODEL=scripted` and `BRINDLE_SCRIPTED_FIXTURE` to a JSON file of canned turns.

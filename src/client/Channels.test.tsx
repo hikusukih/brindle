@@ -287,11 +287,22 @@ describe("channel view", () => {
       "/api/models": () => Response.json({ default: "openai:gpt-test" }),
       "/api/channels": () => Response.json([channel("c1", "Plans")]),
       "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/model-settings": () =>
+        Response.json({
+          model: "openai:gpt-test",
+          contextWindow: 8192,
+          maxSteps: 10,
+          maxTokens: 100000,
+          maxMillis: 300000,
+        }),
       "/api/channels/c1/model": (_m, body) =>
         Response.json({ ...channel("c1", "Plans"), model: (body as { model: string | null }).model }),
     });
     render(<ChannelsScreen />);
     expect(await screen.findByText("Model: openai:gpt-test (default)")).toBeTruthy();
+    expect(
+      await screen.findByText(/Window 8,192 tokens · up to 10 steps, 100,000 tokens and 5 min per run/),
+    ).toBeTruthy();
 
     fireEvent.change(screen.getByLabelText("Model for this channel"), { target: { value: "anthropic:claude-test" } });
     fireEvent.click(screen.getByRole("button", { name: "Set model" }));
