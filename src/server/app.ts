@@ -4,6 +4,7 @@ import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
+import { requireToken } from "./auth.js";
 import {
   archiveChannel,
   ChannelError,
@@ -53,10 +54,17 @@ type AppOptions = {
   scheduler?: Scheduler;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
+  // SHA-256 of the login token. Absent only in tests; main.ts always passes it.
+  authHash?: Buffer;
 };
 
-export function createApp({ db, engine, models, artifacts, scheduler, clientRoot }: AppOptions) {
+export function createApp({ db, engine, models, artifacts, scheduler, clientRoot, authHash }: AppOptions) {
   const app = new Hono();
+
+  if (authHash) app.use("/api/*", requireToken(authHash));
+  app.get("/api/health", (c) => c.json({ ok: true }));
+  // Lets the login form check a token without loading anything else.
+  app.get("/api/session", (c) => c.body(null, 204));
 
   app.get("/api/greeting", (c) => {
     const row = db.select().from(appMeta).where(eq(appMeta.key, "first_started_at")).get();
