@@ -1,5 +1,6 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { api, type Channel, type Run, type RunEvent } from "./api";
+import { type Artifact, api, type Channel, type Run, type RunEvent } from "./api";
+import { AuthedEventSource } from "./events";
 import { channelIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -35,6 +36,12 @@ function ChannelList() {
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
+  const [deleting, setDeleting] = useState<{
+    channel: Channel;
+    artifacts: Artifact[];
+    choice: "keep" | "all" | "some";
+    picked: string[];
+  } | null>(null);
 
   const load = useCallback(() => {
     api<Channel[]>(`/api/channels?archived=${showArchived}`)
@@ -54,6 +61,26 @@ function ChannelList() {
     } catch (e) {
       setProblem((e as Error).message);
     }
+  };
+
+  // A channel that made no artifacts gets the plain confirm; otherwise the user picks what happens to them, keeping all by default.
+  const askDelete = async (c: Channel) => {
+    try {
+      const made = await api<Artifact[]>(`/api/channels/${c.id}/artifacts`);
+      if (made.length) setDeleting({ channel: c, artifacts: made, choice: "keep", picked: [] });
+      else if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
+        await act(`/api/channels/${c.id}`, "DELETE");
+    } catch (e) {
+      setProblem((e as Error).message);
+    }
+  };
+
+  const confirmDelete = async () => {
+    if (!deleting) return;
+    const { channel, artifacts, choice, picked } = deleting;
+    const ids = choice === "all" ? artifacts.map((a) => a.id) : choice === "some" ? picked : [];
+    setDeleting(null);
+    await act(`/api/channels/${channel.id}`, "DELETE", ids.length ? { deleteArtifacts: ids } : undefined);
   };
 
   const create = async (e: FormEvent) => {
@@ -83,6 +110,62 @@ function ChannelList() {
         </button>
       </form>
       <Problem message={problem} />
+      {deleting && (
+        <section aria-label="Delete channel" className="flex flex-col gap-2 rounded-lg border border-red-200 p-3">
+          <h2 className="font-medium">
+            Delete "{deleting.channel.name}" and its history? It made {deleting.artifacts.length}{" "}
+            {deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.
+          </h2>
+          {(
+            [
+              ["keep", "Keep all artifacts"],
+              ["all", "Delete all artifacts"],
+              ["some", "Choose which to delete"],
+            ] as const
+          ).map(([value, label]) => (
+            <label key={value} className="flex min-h-11 items-center gap-2">
+              <input
+                type="radio"
+                name="artifact-choice"
+                checked={deleting.choice === value}
+                onChange={() => setDeleting({ ...deleting, choice: value })}
+              />
+              {label}
+            </label>
+          ))}
+          {deleting.choice === "some" && (
+            <ul className="flex flex-col">
+              {deleting.artifacts.map((a) => (
+                <li key={a.id}>
+                  <label className="flex min-h-11 items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={deleting.picked.includes(a.id)}
+                      onChange={(e) =>
+                        setDeleting({
+                          ...deleting,
+                          picked: e.target.checked
+                            ? [...deleting.picked, a.id]
+                            : deleting.picked.filter((x) => x !== a.id),
+                        })
+                      }
+                    />
+                    {a.title}
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="flex gap-2">
+            <button type="button" className={`${quiet} text-red-700`} onClick={() => void confirmDelete()}>
+              Delete channel
+            </button>
+            <button type="button" className={quiet} onClick={() => setDeleting(null)}>
+              Cancel
+            </button>
+          </div>
+        </section>
+      )}
       <div className="flex gap-2">
         <button type="button" className={quiet} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
           Active
@@ -145,14 +228,7 @@ function ChannelList() {
                   </button>
                 </>
               )}
-              <button
-                type="button"
-                className={`${quiet} text-red-700`}
-                onClick={() => {
-                  if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
-                    void act(`/api/channels/${c.id}`, "DELETE");
-                }}
-              >
+              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
                 Delete
               </button>
             </div>
@@ -319,7 +395,7 @@ function ChannelView({ id }: { id: string }) {
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
   const [modelText, setModelText] = useState("");
-  const source = useRef<EventSource | null>(null);
+  const source = useRef<AuthedEventSource | null>(null);
 
   const reload = useCallback(async () => {
     setRuns(await api<Run[]>(`/api/channels/${id}/runs`));
@@ -347,7 +423,7 @@ function ChannelView({ id }: { id: string }) {
   const follow = useCallback(
     (runId: string) => {
       source.current?.close();
-      const es = new EventSource(`/api/runs/${runId}/events`);
+      const es = new AuthedEventSource(`/api/runs/${runId}/events`);
       source.current = es;
       const take = (e: Event) => {
         // "error" is also the name of EventSource's own connection failure, which carries no data.
@@ -373,7 +449,7 @@ function ChannelView({ id }: { id: string }) {
         reload().catch((err: unknown) => setProblem((err as Error).message));
       });
       es.onerror = () => {
-        if (es.readyState === EventSource.CLOSED) {
+        if (es.readyState === AuthedEventSource.CLOSED) {
           setProblem("Lost the connection to the server.");
           reload().catch(() => {});
         }
