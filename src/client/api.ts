@@ -1,3 +1,5 @@
+import { authHeaders, setToken, unauthorizedEvent } from "./token";
+
 export type Channel = {
   id: string;
   name: string;
@@ -24,9 +26,14 @@ export type Run = {
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(path, {
     method: init?.method ?? "GET",
-    headers: init?.body === undefined ? undefined : { "content-type": "application/json" },
+    headers: { ...authHeaders(), ...(init?.body === undefined ? {} : { "content-type": "application/json" }) },
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   });
+  if (res.status === 401) {
+    // The stored token no longer works; the login gate takes over.
+    setToken(null);
+    window.dispatchEvent(new Event(unauthorizedEvent));
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? `Server answered ${res.status}`);
