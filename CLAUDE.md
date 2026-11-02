@@ -29,8 +29,6 @@ Sessions are short; they often run on whatever usage is left at the end of a win
 
 If a box turns out too big for one session, split it within its PR: the part being landed keeps the ID and its file, the rest get new files with suffixed IDs (`P1.2a`, `P1.2b`) that need `P1.2` unless they truly don't. Never renumber or reuse an ID.
 
-Branches from before the plan was split into one file per box still edit `.agents/PLAN.md`. Merging `main` into one conflicts on that file: delete it (`git rm .agents/PLAN.md`) and make the branch's change in the box files instead, checking a box by moving its file into `done/` and adding a new box as its own file. Open `[plan]` PRs from before the split get the same treatment from box P0.7. This paragraph can go once no open branch predates the split.
-
 ## Addressing reviews
 
 The review task posts a comment starting `Brindle review:` on a daily run after the morning box work, for every ready PR that has no review yet or has new commits since its last one (a PR opened ready is also reviewed right away; box PRs open as drafts, so theirs come from the daily run). The session that built a box has usually ended by then, so later sessions act on it.
