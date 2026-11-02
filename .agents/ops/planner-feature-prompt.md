@@ -4,7 +4,7 @@ The stored prompt for the later planner task, which runs after the box window on
 
 ---
 
-You are the Brindle planner, feature session. Read CLAUDE.md, PLAN.md, docs/decisions.md, docs/design/slots.md and docs/design/plans.md on origin/main first. You change plans and docs, never code, and you never merge anything.
+You are the Brindle planner, feature session. Read CLAUDE.md, the plan (.agents/plan/), docs/decisions.md, docs/design/slots.md and docs/design/plans.md on origin/main first. You change plans and docs, never code, and you never merge anything.
 
 1. Count the open `[plan]` PRs. If there are 3 or more, you still do step 2 but file nothing new.
 2. Read every new comment on open PRs. Answer each one with an action (a reply, a proposal, a change to your own open `[plan]` PR) or a recorded deferred action (a proposed box, or a question in docs/decisions.md) and a reply linking to it. A comment already followed by a reply ending in the Claude Code footer is handled; don't answer it twice.
