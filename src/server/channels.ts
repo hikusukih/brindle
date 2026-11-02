@@ -7,7 +7,7 @@ export type Channel = typeof channels.$inferSelect;
 
 export class ChannelError extends Error {
   constructor(
-    readonly code: "not_found" | "archived" | "invalid_name" | "invalid_model",
+    readonly code: "not_found" | "archived" | "invalid_name" | "invalid_model" | "home",
     message: string,
   ) {
     super(message);
@@ -42,9 +42,27 @@ export function createChannel(db: Db, name: unknown, now = new Date()): Channel 
     updatedAt: stamp,
     archivedAt: null,
     model: null,
+    isHome: false,
   };
   db.insert(channels).values(row).run();
   return row;
+}
+
+export const homeChannelName = "Home";
+
+/** The Home channel, made at first start; later starts find it. The user may rename it, so it is found by its flag. */
+export function ensureHomeChannel(db: Db, now = new Date()): Channel {
+  const existing = db.select().from(channels).where(eq(channels.isHome, true)).get();
+  if (existing) return existing;
+  const row = { ...createChannel(db, homeChannelName, now), isHome: true };
+  db.update(channels).set({ isHome: true }).where(eq(channels.id, row.id)).run();
+  return row;
+}
+
+/** The Home channel is the app's front door, so archiving or deleting it is refused. Renaming is fine. */
+export function refuseHomeChannel(db: Db, id: string): void {
+  if (getChannel(db, id).isHome)
+    throw new ChannelError("home", "The Home channel can be renamed but not archived or deleted.");
 }
 
 /**

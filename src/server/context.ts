@@ -14,6 +14,8 @@ const margin = 0.9;
 /** An emergency drop removes runs down to this share of layer 4, so the start of the prompt changes in chunks. */
 const dropTarget = 0.4;
 export const keptPrompts = 20;
+/** Layer 4 of the Home channel's context, as a share of the window. */
+export const homeHistoryShare = 0.25;
 
 /** Fixed text: nothing that changes per run goes here, or the server's prompt cache never matches. */
 export const harnessInstructions =
@@ -65,6 +67,8 @@ export type ContextInput = {
   /** The running run's own messages: its user message and, from the second step on, its calls and results. */
   current: Message[];
   window?: number;
+  /** The Home channel keeps only recent runs: layer 4 is capped at this share of the window (docs/design/home-channel.md). */
+  historyWindowShare?: number;
   /** Tokens the tool definitions will cost. */
   toolTokens?: number;
   /** The channel's model spec and a fingerprint of the tool definitions, compared with the previous request's. */
@@ -133,7 +137,10 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
   }
 
   // Whole runs only, so a tool call is never parted from its result.
-  const share = budget - fixed;
+  const share = Math.min(
+    budget - fixed,
+    input.historyWindowShare ? Math.floor(window * input.historyWindowShare) : Infinity,
+  );
   const sizes = input.past.map((r) => tokensOf(r.messages));
   // Start where the previous request started, so a drop is not repeated on every message: without this, each
   // new run would push the 40% cut forward by one and the start of the prompt would change every time.

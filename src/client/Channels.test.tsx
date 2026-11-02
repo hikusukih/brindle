@@ -18,6 +18,7 @@ const channel = (id: string, name: string, archivedAt: string | null = null): Ch
   createdAt: stamp,
   updatedAt: stamp,
   archivedAt,
+  isHome: false,
   model: null,
 });
 

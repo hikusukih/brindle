@@ -1,7 +1,7 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
-import { ChannelError, createChannel, getChannel, listChannels } from "./channels.js";
+import { ChannelError, createChannel, ensureHomeChannel, getChannel, listChannels } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { channels, events, runs } from "./db/schema.js";
 
@@ -114,5 +114,33 @@ describe("channel store", () => {
     const id = createChannel(openDatabase(file), "Persisted").id;
     expect(getChannel(openDatabase(file), id).name).toBe("Persisted");
     expect(() => getChannel(openDatabase(file), "missing")).toThrow(ChannelError);
+  });
+});
+
+describe("the Home channel", () => {
+  it("is made once, found again after a restart, and flagged in the list", async () => {
+    const { db, send } = setup();
+    const home = ensureHomeChannel(db);
+    expect(home.isHome).toBe(true);
+    expect(ensureHomeChannel(db).id).toBe(home.id);
+    const listed = (await (await send("GET", "/api/channels")).json()) as { id: string; isHome: boolean }[];
+    expect(listed.filter((c) => c.isHome).map((c) => c.id)).toEqual([home.id]);
+    expect(createChannel(db, "Other").isHome).toBe(false);
+  });
+
+  it("can be renamed but not archived or deleted, and is still the Home channel after a rename", async () => {
+    const { db, send } = setup();
+    const home = ensureHomeChannel(db);
+    expect((await send("PATCH", `/api/channels/${home.id}`, { name: "Front door" })).status).toBe(200);
+    for (const [method, path] of [
+      ["POST", `/api/channels/${home.id}/archive`],
+      ["DELETE", `/api/channels/${home.id}`],
+    ] as const) {
+      const res = await send(method, path);
+      expect(res.status).toBe(409);
+      expect(((await res.json()) as { error: string }).error).toBe("home");
+    }
+    expect(getChannel(db, home.id)).toMatchObject({ name: "Front door", isHome: true, archivedAt: null });
+    expect(ensureHomeChannel(db).id).toBe(home.id);
   });
 });

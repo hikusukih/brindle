@@ -5,6 +5,7 @@ import { serve } from "@hono/node-server";
 import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
+import { ensureHomeChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
@@ -22,6 +23,7 @@ const port = Number(process.env.PORT ?? 8787);
 mkdirSync(dataDir, { recursive: true });
 migrateLegacyDatabase(dataDir);
 const db = openDatabase(join(dataDir, "brindle.sqlite"));
+ensureHomeChannel(db);
 recordFirstStart(db);
 const token = resolveToken(db, process.env);
 if (token.generated) {

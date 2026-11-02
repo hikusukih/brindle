@@ -16,6 +16,8 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   // A model spec such as "openai:gpt-4o"; null means the server's default model.
   model: text("model"),
+  // The one Home channel (docs/design/home-channel.md): created at first start, renamable, never archived or deleted.
+  isHome: integer("is_home", { mode: "boolean" }).notNull().default(false),
 });
 
 export const runs = sqliteTable(

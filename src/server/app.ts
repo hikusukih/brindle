@@ -12,6 +12,7 @@ import {
   deleteChannel,
   getChannel,
   listChannels,
+  refuseHomeChannel,
   renameChannel,
   restoreChannel,
   setChannelModel,
@@ -77,7 +78,7 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
 
   app.onError((err, c) => {
     if (err instanceof ChannelError) {
-      const status = err.code === "not_found" ? 404 : err.code === "archived" ? 409 : 400;
+      const status = err.code === "not_found" ? 404 : err.code === "archived" || err.code === "home" ? 409 : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     if (err instanceof GoalError || err instanceof ScopeStatementError) {
@@ -172,6 +173,7 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
     return c.json(setChannelModel(db, c.req.param("id"), body.model, validate));
   });
   app.post("/api/channels/:id/archive", (c) => {
+    refuseHomeChannel(db, c.req.param("id"));
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(archiveChannel(db, c.req.param("id")));
   });
@@ -216,7 +218,7 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
   // The body may list artifact ids to delete with the channel; with none, every artifact is kept.
   app.delete("/api/channels/:id", async (c) => {
     const id = c.req.param("id");
-    getChannel(db, id);
+    refuseHomeChannel(db, id);
     refuseGoalChannel(db, id);
     const body = (await c.req.json().catch(() => null)) as { deleteArtifacts?: unknown } | null;
     const ids = body?.deleteArtifacts;

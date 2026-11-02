@@ -8,6 +8,8 @@ export type Channel = {
   archivedAt: string | null;
   /** A spec such as "openai:gpt-4o"; null follows the server default. */
   model: string | null;
+  /** The one Home channel: it can be renamed but not archived or deleted. */
+  isHome: boolean;
 };
 
 export type RunEvent = { id: string; runId: string; seq: number; type: string; data: string; createdAt: string };

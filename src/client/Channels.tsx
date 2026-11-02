@@ -223,14 +223,22 @@ function ChannelList() {
                   <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
                     Rename
                   </button>
-                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}>
-                    Archive
-                  </button>
+                  {!c.isHome && (
+                    <button
+                      type="button"
+                      className={quiet}
+                      onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}
+                    >
+                      Archive
+                    </button>
+                  )}
                 </>
               )}
-              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
-                Delete
-              </button>
+              {!c.isHome && (
+                <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
+                  Delete
+                </button>
+              )}
             </div>
           </li>
         ))}

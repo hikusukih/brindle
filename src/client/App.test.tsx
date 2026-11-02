@@ -24,6 +24,22 @@ describe("App", () => {
     expect(await screen.findByText("Hello from Brindle.")).toBeTruthy();
   });
 
+  it("opens on the Home channel when the address names no screen", async () => {
+    const home = { id: "home1", name: "Home", isHome: true, archivedAt: null };
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.includes("/runs")
+          ? Response.json([])
+          : url.startsWith("/api/channels")
+            ? Response.json([{ id: "c2", name: "Other", isHome: false, archivedAt: null }, home])
+            : Response.json({ message: "Hello from Brindle.", since: "2026-01-02T03:04:05.000Z" }),
+      ),
+    );
+    render(<App />);
+    await vi.waitFor(() => expect(window.location.hash).toBe("#/channels/home1"));
+  });
+
   it("sends the login token with the greeting request, since the route is gated", async () => {
     setToken("test-token-1234abcd");
     vi.stubGlobal(
