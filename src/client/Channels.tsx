@@ -1,5 +1,5 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { type Artifact, api, type Channel, type Run, type RunEvent } from "./api";
+import { type Artifact, announceChannelsChanged, api, type Channel, type Run, type RunEvent } from "./api";
 import { AuthedEventSource } from "./events";
 import { channelIdFromHash } from "./screens";
 
@@ -58,6 +58,7 @@ function ChannelList() {
       await api(path, { method, body });
       setRenaming(null);
       load();
+      announceChannelsChanged();
     } catch (e) {
       setProblem((e as Error).message);
     }
@@ -88,6 +89,7 @@ function ChannelList() {
     try {
       const made = await api<Channel>("/api/channels", { method: "POST", body: { name } });
       setName("");
+      announceChannelsChanged();
       window.location.hash = `#/channels/${made.id}`;
     } catch (err) {
       setProblem((err as Error).message);
