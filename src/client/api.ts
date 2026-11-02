@@ -1,3 +1,5 @@
+import { authHeaders, setToken, unauthorizedEvent } from "./token";
+
 export type Channel = {
   id: string;
   name: string;
@@ -24,9 +26,14 @@ export type Run = {
 export async function api<T>(path: string, init?: { method?: string; body?: unknown }): Promise<T> {
   const res = await fetch(path, {
     method: init?.method ?? "GET",
-    headers: init?.body === undefined ? undefined : { "content-type": "application/json" },
+    headers: { ...authHeaders(), ...(init?.body === undefined ? {} : { "content-type": "application/json" }) },
     body: init?.body === undefined ? undefined : JSON.stringify(init.body),
   });
+  if (res.status === 401) {
+    // The stored token no longer works; the login gate takes over.
+    setToken(null);
+    window.dispatchEvent(new Event(unauthorizedEvent));
+  }
   if (!res.ok) {
     const body = (await res.json().catch(() => null)) as { message?: string } | null;
     throw new Error(body?.message ?? `Server answered ${res.status}`);
@@ -37,3 +44,19 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
 // The side rail lists channels too, and a change made on the Channels screen does not change the hash, so it says so here.
 export const channelsChanged = "brindle:channels-changed";
 export const announceChannelsChanged = () => window.dispatchEvent(new Event(channelsChanged));
+
+export type Artifact = {
+  id: string;
+  title: string;
+  kind: "document" | "code" | "data" | "page" | "link";
+  scope: "channel" | "goal";
+  scopeId: string;
+  /** The scope's name when the artifact was made. */
+  scopeName: string;
+  runId: string | null;
+  mime: string;
+  size: number;
+  createdAt: string;
+  /** True while the channel that made it still exists. */
+  scopeLive: boolean;
+};

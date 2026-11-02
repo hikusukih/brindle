@@ -3,7 +3,8 @@ import { eq } from "drizzle-orm";
 import { type Context, Hono } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
-import type { ArtifactStore } from "./artifacts.js";
+import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
+import { requireToken } from "./auth.js";
 import {
   archiveChannel,
   ChannelError,
@@ -53,10 +54,17 @@ type AppOptions = {
   scheduler?: Scheduler;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
+  // SHA-256 of the login token. Absent only in tests; main.ts always passes it.
+  authHash?: Buffer;
 };
 
-export function createApp({ db, engine, models, artifacts, scheduler, clientRoot }: AppOptions) {
+export function createApp({ db, engine, models, artifacts, scheduler, clientRoot, authHash }: AppOptions) {
   const app = new Hono();
+
+  if (authHash) app.use("/api/*", requireToken(authHash));
+  app.get("/api/health", (c) => c.json({ ok: true }));
+  // Lets the login form check a token without loading anything else.
+  app.get("/api/session", (c) => c.body(null, 204));
 
   app.get("/api/greeting", (c) => {
     const row = db.select().from(appMeta).where(eq(appMeta.key, "first_started_at")).get();
@@ -170,6 +178,14 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
   app.post("/api/channels/:id/restore", (c) => {
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
+  });
+  app.get("/api/artifacts", (c) => {
+    const kind = c.req.query("kind");
+    const scope = c.req.query("scope");
+    if (kind && !artifactKinds.includes(kind as ArtifactKind))
+      throw new HTTPException(400, { message: "Unknown kind." });
+    if (scope && scope !== "channel" && scope !== "goal") throw new HTTPException(400, { message: "Unknown scope." });
+    return c.json(artifacts?.list({ kind, scope }) ?? []);
   });
   // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
   // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
