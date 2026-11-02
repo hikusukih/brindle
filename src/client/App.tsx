@@ -5,6 +5,7 @@ import { api } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { LoginGate } from "./Login";
 import { type ScreenId, screenFromHash, screens } from "./screens";
+import { TimeZoneProvider, TimeZoneSetting, useTimeZone } from "./TimeZone";
 
 type State = { kind: "loading" } | { kind: "ready"; greeting: Greeting } | { kind: "error"; message: string };
 
@@ -58,6 +59,7 @@ function NavLinks({ current, orientation }: { current: ScreenId; orientation: "r
 }
 
 function Shell() {
+  const { format } = useTimeZone();
   const screen = useScreen();
   const status = useServerStatus();
   const active = screens.find((s) => s.id === screen) ?? screens[0];
@@ -95,9 +97,10 @@ function Shell() {
           {status.kind === "ready" && (
             <>
               <p>{status.greeting.message}</p>
-              <p>Running since {new Date(status.greeting.since).toLocaleString()}</p>
+              <p>Running since {format(status.greeting.since)}</p>
             </>
           )}
+          <TimeZoneSetting />
           {status.kind === "error" && <p className="text-red-700">Could not reach the server: {status.message}</p>}
         </div>
       </main>
@@ -108,7 +111,9 @@ function Shell() {
 export function App() {
   return (
     <LoginGate>
-      <Shell />
+      <TimeZoneProvider>
+        <Shell />
+      </TimeZoneProvider>
     </LoginGate>
   );
 }

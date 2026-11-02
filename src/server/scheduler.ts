@@ -41,7 +41,7 @@ export class Scheduler {
   constructor(
     private readonly db: Db,
     private readonly hooks: SchedulerHooks,
-    private readonly options: SchedulerOptions,
+    private options: SchedulerOptions,
   ) {
     this.pollMillis = options.pollMillis ?? 30_000;
     this.graceMillis = options.graceMillis ?? 6 * hour;
@@ -73,6 +73,25 @@ export class Scheduler {
     };
     this.db.insert(schedules).values(row).run();
     return row;
+  }
+
+  /** Changing the user's time zone moves every enabled schedule's next occurrence with it: "6:30" means 6:30 where the user is. */
+  setTimeZone(timeZone: string, now = new Date()) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone });
+    } catch {
+      throw new SchedulerError(`"${timeZone}" is not a time zone I know.`);
+    }
+    // Occurrences already due belong to the old zone's clock: bring them in as fires first, so the log still shows every one.
+    this.comeDue(now);
+    this.options = { ...this.options, timeZone };
+    for (const schedule of this.db.select().from(schedules).where(eq(schedules.enabled, true)).all()) {
+      this.db
+        .update(schedules)
+        .set({ nextFireAt: this.after(schedule.cron, now).toISOString() })
+        .where(eq(schedules.id, schedule.id))
+        .run();
+    }
   }
 
   /** Disabling stops new occurrences; enabling picks up from the next one after now, never from the time it was off. */

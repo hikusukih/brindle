@@ -13,6 +13,7 @@ import {
 import type { Db } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
+import { describeToday } from "./time-zone.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
 import { estimateTokens, sizeResult } from "./tools/sizing.js";
 
@@ -146,6 +147,14 @@ export class RunEngine {
     private readonly limits: RunLimits = defaultLimits,
     private readonly tools: ToolRegistry = new ToolRegistry(),
   ) {}
+
+  private today(): string | undefined {
+    const zone = this.timeZone();
+    return zone ? describeToday(zone) : undefined;
+  }
+
+  /** The user's time zone, read per request so a change applies at once; null leaves the date out of the prompt. */
+  timeZone: () => string | null = () => null;
 
   /** Runs left "running" by a previous process can never finish; say so instead of leaving them spinning. */
   recoverInterrupted(now = new Date()): number {
@@ -382,6 +391,7 @@ export class RunEngine {
               model: getChannel(this.db, channelId).model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
+              today: this.today(),
             });
           } catch (error) {
             // Nothing is sent, but keep the report at the step it happened so the debug view shows why.
