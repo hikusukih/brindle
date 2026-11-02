@@ -1,0 +1,1 @@
+ALTER TABLE `schedules` ADD `suspended_by_archive` integer DEFAULT false NOT NULL;
