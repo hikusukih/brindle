@@ -42,7 +42,11 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
-const engine = new RunEngine(db, (spec) => models.resolve(spec), undefined, tools);
+// Housekeeping (rolling compaction) uses BRINDLE_UTILITY_MODEL, defaulting to the channel's own model.
+const utilitySpec = process.env.BRINDLE_UTILITY_MODEL?.trim() || null;
+const engine = new RunEngine(db, (spec) => models.resolve(spec), undefined, tools, {
+  utilityModel: (spec) => models.resolve(utilitySpec ?? spec),
+});
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
 const app = createApp({
