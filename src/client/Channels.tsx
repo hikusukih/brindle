@@ -388,6 +388,94 @@ function ApprovalCard(props: {
   );
 }
 
+type Purpose = { current: { text: string; author: "user" | "agent"; confirmed: boolean; version: number } | null };
+
+/** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
+function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
+  const [purpose, setPurpose] = useState<Purpose | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A goal's channel answers 409: it has a brief instead, so nothing is shown here.
+    api<Purpose>(`/api/channels/${id}/purpose`)
+      .then(setPurpose)
+      .catch(() => setPurpose(null));
+  }, [id]);
+
+  const act = async (path: string, method: string, body?: unknown) => {
+    try {
+      setPurpose(await api<Purpose>(`/api/channels/${id}/purpose${path}`, { method, body }));
+      setEditing(null);
+      setProblem(null);
+    } catch (e) {
+      setProblem(String((e as Error).message));
+    }
+  };
+
+  if (!purpose) return null;
+  const current = purpose.current;
+  const draft = current?.author === "agent" && !current.confirmed;
+  return (
+    <div className="flex flex-col gap-2 text-sm text-slate-600">
+      {editing === null ? (
+        <>
+          <p>
+            {current ? current.text : "No purpose statement yet. One is drafted after the first few exchanges."}
+            {draft && <span className="ml-2 text-xs uppercase text-slate-500">draft</span>}
+          </p>
+          {!readOnly && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => setEditing(current?.text ?? "")}
+              >
+                {current ? "Edit purpose" : "Write purpose"}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => act("/draft", "POST")}
+              >
+                Draft one
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act("", "PUT", { text: editing });
+          }}
+        >
+          <textarea
+            aria-label="Purpose statement"
+            className="min-h-24 rounded-lg border border-slate-300 p-2"
+            value={editing}
+            onChange={(e) => setEditing(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="min-h-11 rounded-lg bg-slate-900 px-3 text-white">
+              Save purpose
+            </button>
+            <button
+              type="button"
+              className="min-h-11 rounded-lg border border-slate-300 px-3"
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      <Problem message={problem} />
+    </div>
+  );
+}
+
 function ChannelView({ id }: { id: string }) {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -499,6 +587,7 @@ function ChannelView({ id }: { id: string }) {
         ← All channels
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
+      {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
           <p>Model: {channel.model ?? (defaultModel ? `${defaultModel} (default)` : "none configured")}</p>

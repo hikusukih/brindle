@@ -13,6 +13,7 @@ import {
 import type { Db } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
+import { scopeStatementFor } from "./scope-statements.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
 import { estimateTokens, sizeResult } from "./tools/sizing.js";
 
@@ -139,6 +140,8 @@ export class RunEngine {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly settled = new Map<string, Promise<void>>();
   private readonly live = new Map<string, LiveRun>();
+  /** Called after a run ends as done, for housekeeping such as drafting a purpose statement. Must not throw into the run. */
+  onRunDone?: (channelId: string) => void;
 
   constructor(
     private readonly db: Db,
@@ -379,6 +382,7 @@ export class RunEngine {
               current: messages,
               window: this.limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
+              scopeStatement: scopeStatementFor(this.db, channelId),
               model: getChannel(this.db, channelId).model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
@@ -560,6 +564,15 @@ export class RunEngine {
     this.live.delete(runId);
     for (const listener of this.listeners.get(runId) ?? []) listener(null);
     this.listeners.delete(runId);
+    // After everything the user waits on; a failing hook must never touch the run.
+    const run = this.db.select().from(runs).where(eq(runs.id, runId)).get();
+    if (run && status === "done") {
+      try {
+        this.onRunDone?.(run.channelId);
+      } catch {
+        // The hook is housekeeping; the run is already finished.
+      }
+    }
   }
 }
 
