@@ -41,6 +41,14 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+export type GoalState = {
+  version: number;
+  text: string;
+  author?: "user" | "agent";
+  note?: string;
+  createdAt?: string;
+};
+
 export type Artifact = {
   id: string;
   title: string;

@@ -3,6 +3,7 @@ import type { Greeting } from "../server/app";
 import { ArtifactsScreen } from "./Artifacts";
 import { api } from "./api";
 import { ChannelsScreen } from "./Channels";
+import { GoalStateView, goalStateIdFromHash } from "./GoalState";
 import { LoginGate } from "./Login";
 import { type ScreenId, screenFromHash, screens } from "./screens";
 
@@ -26,14 +27,14 @@ function useServerStatus() {
 }
 
 // The hash keeps each screen linkable and the back button working without a router dependency.
-function useScreen(): ScreenId {
-  const [screen, setScreen] = useState(() => screenFromHash(window.location.hash));
+function useScreen(): { screen: ScreenId; hash: string } {
+  const [hash, setHash] = useState(() => window.location.hash);
   useEffect(() => {
-    const onChange = () => setScreen(screenFromHash(window.location.hash));
+    const onChange = () => setHash(window.location.hash);
     window.addEventListener("hashchange", onChange);
     return () => window.removeEventListener("hashchange", onChange);
   }, []);
-  return screen;
+  return { screen: screenFromHash(hash), hash };
 }
 
 function NavLinks({ current, orientation }: { current: ScreenId; orientation: "rail" | "bar" }) {
@@ -58,8 +59,9 @@ function NavLinks({ current, orientation }: { current: ScreenId; orientation: "r
 }
 
 function Shell() {
-  const screen = useScreen();
+  const { screen, hash } = useScreen();
   const status = useServerStatus();
+  const stateGoal = goalStateIdFromHash(hash);
   const active = screens.find((s) => s.id === screen) ?? screens[0];
 
   return (
@@ -77,10 +79,12 @@ function Shell() {
         </div>
       </nav>
       <main
-        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
+        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" || stateGoal ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
       >
         {screen === "channels" ? (
           <ChannelsScreen />
+        ) : stateGoal ? (
+          <GoalStateView goalId={stateGoal} />
         ) : screen === "artifacts" ? (
           <ArtifactsScreen empty={active.empty} />
         ) : (

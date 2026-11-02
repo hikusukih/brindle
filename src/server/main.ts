@@ -6,6 +6,7 @@ import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { openDatabase } from "./db/index.js";
+import { goalStateAccess } from "./goal-state.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
@@ -33,7 +34,7 @@ const builtClient = fileURLToPath(new URL("../../dist/client", import.meta.url))
 // With no default model and none chosen for a channel, starting a run answers 503.
 const models = modelRegistry(process.env);
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const tools = builtInTools(process.env, artifacts);
+const tools = builtInTools(process.env, artifacts, goalStateAccess(db));
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
 const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
