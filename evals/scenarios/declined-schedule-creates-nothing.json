@@ -1,0 +1,37 @@
+{
+  "name": "declined-schedule-creates-nothing",
+  "description": "The user declines the card, so no schedule exists.",
+  "messages": ["Run my brief every morning at 7."],
+  "goal": {
+    "title": "Morning brief",
+    "brief": "A short brief of what matters, on a schedule."
+  },
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_schedule",
+            "arguments": {
+              "cron": "0 7 * * *",
+              "prompt": "Write the morning brief."
+            }
+          }
+        ]
+      },
+      {
+        "text": ["Okay, I have not scheduled anything."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["decline"],
+      "schedules": 0,
+      "crons": [],
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}
