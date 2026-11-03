@@ -25,6 +25,12 @@ export const screens = [
     label: "Artifacts",
     empty: { title: "No artifacts yet", body: "Documents, pages and files your agent makes are collected here." },
   },
+  {
+    id: "settings",
+    label: "Settings",
+    // Settings has no empty state; the field keeps every screen the same shape.
+    empty: { title: "Settings", body: "How your agent is set up." },
+  },
 ] as const;
 
 export type ScreenId = (typeof screens)[number]["id"];
