@@ -3,9 +3,18 @@ import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 // AES-256-GCM with a fresh 96-bit nonce per value, as docs/design/key-manager.md settles.
 export type Sealed = { nonce: string; ciphertext: string };
 
-/** The associated data binds a ciphertext to its row: moving it to another secret, or editing the scope, fails to decrypt. */
-export const aadFor = (id: string, name: string, scopeHash: string) =>
-  Buffer.from(`${id}\0${name}\0${scopeHash}`, "utf8");
+/**
+ * The associated data binds a ciphertext to its row: moving it to another secret, or editing its name, kind, header,
+ * expiry or scope, fails to decrypt. Callers pass a hash computed from the scope as stored, never a stored hash.
+ */
+export const aadFor = (f: {
+  id: string;
+  name: string;
+  kind: string;
+  headerName: string | null;
+  expiresAt: string | null;
+  scopeHash: string;
+}) => Buffer.from(JSON.stringify([f.id, f.name, f.kind, f.headerName, f.expiresAt, f.scopeHash]), "utf8");
 
 export function seal(key: Buffer, plaintext: string, aad: Buffer): Sealed {
   const nonce = randomBytes(12);

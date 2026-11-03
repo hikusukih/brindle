@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "c8ad6d82-7d15-4c52-be3b-52c09debd2ad",
+  "id": "f268e325-60dd-4d7b-bc28-62eb22931baf",
   "prevId": "d4834a6c-7491-4cb7-b0b1-e054ad9e771b",
   "tables": {
     "app_meta": {
@@ -837,12 +837,13 @@
         }
       },
       "indexes": {
-        "secrets_name_unique": {
-          "name": "secrets_name_unique",
+        "secrets_live_name": {
+          "name": "secrets_live_name",
           "columns": [
             "name"
           ],
-          "isUnique": true
+          "isUnique": true,
+          "where": "\"secrets\".\"revoked_at\" is null"
         }
       },
       "foreignKeys": {},

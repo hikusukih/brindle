@@ -1,6 +1,6 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, renameSync, unlinkSync } from "node:fs";
-import { eq, isNull } from "drizzle-orm";
+import { and, desc, eq, isNull } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { secrets } from "../db/schema.js";
 import { aadFor, open, type Sealed, seal } from "./crypto.js";
@@ -42,6 +42,24 @@ export const handleFor = (name: string) => `{{secret:${name}}}`;
 
 type Row = typeof secrets.$inferSelect;
 
+/** Recomputes the scope's hash from the stored scope text, so an edit to the scope in the database breaks decryption. */
+export function aadOfRow(row: Row): Buffer {
+  let hash: string;
+  try {
+    hash = scopeHash(JSON.parse(row.scope) as SecretScope);
+  } catch {
+    hash = "unreadable";
+  }
+  return aadFor({
+    id: row.id,
+    name: row.name,
+    kind: row.kind,
+    headerName: row.headerName,
+    expiresAt: row.expiresAt,
+    scopeHash: hash,
+  });
+}
+
 /**
  * The vault's whole public surface, which hands out no value: `fetch` (P6.3) will use the stored values from inside
  * this directory and return only scrubbed responses. Nothing here, or anywhere else, returns a plaintext value.
@@ -72,7 +90,7 @@ export class Vault {
   }
 
   private reveal(row: Row, key: Buffer): string {
-    return open(key, { nonce: row.nonce, ciphertext: row.ciphertext }, aadFor(row.id, row.name, row.scopeHash));
+    return open(key, { nonce: row.nonce, ciphertext: row.ciphertext }, aadOfRow(row));
   }
 
   store(input: StoreInput, now = new Date()): SecretInfo {
@@ -97,24 +115,35 @@ export class Vault {
     if (input.kind !== "api_key" && input.headerName) throw new VaultError("Only an API key names a header.");
     if (input.expiresAt && input.expiresAt.getTime() <= now.getTime())
       throw new VaultError("That expiry is already past.");
-    if (this.db.select().from(secrets).where(eq(secrets.name, input.name)).get()) {
+    const live = this.db
+      .select()
+      .from(secrets)
+      .where(and(eq(secrets.name, input.name), isNull(secrets.revokedAt)))
+      .get();
+    if (live) {
       throw new VaultError(`A secret named "${input.name}" already exists; revoke it first to replace it.`);
     }
     const scope = normalizeScope(input.scope);
     const hash = scopeHash(scope);
     const id = randomUUID();
-    const sealed = seal(this.key, input.value, aadFor(id, input.name, hash));
+    const expiresAt = input.expiresAt?.toISOString() ?? null;
+    const headerName = input.kind === "api_key" ? (input.headerName ?? null) : null;
+    const sealed = seal(
+      this.key,
+      input.value,
+      aadFor({ id, name: input.name, kind: input.kind, headerName, expiresAt, scopeHash: hash }),
+    );
     const row: Row = {
       id,
       name: input.name,
       kind: input.kind,
-      headerName: input.kind === "api_key" ? (input.headerName ?? null) : null,
+      headerName,
       scope: JSON.stringify(scope),
       scopeHash: hash,
       nonce: sealed.nonce,
       ciphertext: sealed.ciphertext,
       createdAt: now.toISOString(),
-      expiresAt: input.expiresAt?.toISOString() ?? null,
+      expiresAt,
       lastUsedAt: null,
       revokedAt: null,
     };
@@ -124,11 +153,7 @@ export class Vault {
 
   /** Metadata for one secret, found by name or by the handle text. Never the value. */
   describe(handleOrName: string, now = new Date()): SecretInfo | null {
-    const row = this.db
-      .select()
-      .from(secrets)
-      .where(eq(secrets.name, nameOf(handleOrName)))
-      .get();
+    const row = byName(this.db, handleOrName);
     return row ? info(row, now) : null;
   }
 
@@ -156,11 +181,7 @@ export class Vault {
 
   /** Revoking keeps the row, so history still names it, but the value is gone: a revoked secret cannot be used again. */
   revoke(handleOrName: string, now = new Date()): boolean {
-    const row = this.db
-      .select()
-      .from(secrets)
-      .where(eq(secrets.name, nameOf(handleOrName)))
-      .get();
+    const row = byName(this.db, handleOrName);
     if (!row || row.revokedAt) return false;
     // Overwrite the sealed value with a tombstone: revoke must mean the plaintext cannot come back from the database.
     this.db
@@ -183,8 +204,7 @@ export class Vault {
     this.db.transaction((tx) => {
       for (const row of tx.select().from(secrets).all()) {
         if (row.revokedAt) continue;
-        const aad = aadFor(row.id, row.name, row.scopeHash);
-        const sealed: Sealed = seal(next, this.reveal(row, this.key), aad);
+        const sealed: Sealed = seal(next, this.reveal(row, this.key), aadOfRow(row));
         tx.update(secrets).set(sealed).where(eq(secrets.id, row.id)).run();
         rotated++;
       }
@@ -199,6 +219,16 @@ export class Vault {
 
 /** A revoked secret keeps no sealed value, so only a live row can say whether a key is the right one. */
 const firstLive = (db: Db) => db.select().from(secrets).where(isNull(secrets.revokedAt)).limit(1).get();
+
+/** The live secret by that name if there is one, else the latest revoked one, which history still names. */
+const byName = (db: Db, handleOrName: string): Row | undefined =>
+  db
+    .select()
+    .from(secrets)
+    .where(eq(secrets.name, nameOf(handleOrName)))
+    .orderBy(desc(secrets.createdAt))
+    .all()
+    .sort((a, b) => Number(a.revokedAt !== null) - Number(b.revokedAt !== null))[0];
 
 const nameOf = (handleOrName: string) => handleOrName.replace(/^\{\{secret:(.*)\}\}$/, "$1");
 
@@ -234,11 +264,7 @@ export function openVault(db: Db, options: { keyFile: string; dataDir: string })
       let committed = false;
       if (row) {
         try {
-          open(
-            readKeyFile(pending),
-            { nonce: row.nonce, ciphertext: row.ciphertext },
-            aadFor(row.id, row.name, row.scopeHash),
-          );
+          open(readKeyFile(pending), { nonce: row.nonce, ciphertext: row.ciphertext }, aadOfRow(row));
           committed = true;
         } catch {
           // The old key is still the right one.

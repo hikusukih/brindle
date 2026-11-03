@@ -30,6 +30,8 @@ export function normalizeScope(input: Partial<SecretScope> & { hosts: string[] }
   const hosts = [...new Set(input.hosts.map((h) => h.trim().toLowerCase()))];
   if (hosts.length === 0) throw new VaultError("A secret needs at least one host it may be sent to.");
   for (const h of hosts) {
+    if (h.startsWith("*.") && !h.slice(2).split(":")[0]?.includes("."))
+      throw new VaultError(`"${h}" covers a whole top-level domain; name the domain it belongs to.`);
     if (!hostPattern.test(h))
       throw new VaultError(`"${h}" is not a host name (no scheme, path or wildcard except a leading *.).`);
     const port = h.split(":")[1];

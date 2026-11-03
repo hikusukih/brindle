@@ -13,4 +13,4 @@ CREATE TABLE `secrets` (
 	`revoked_at` text
 );
 --> statement-breakpoint
-CREATE UNIQUE INDEX `secrets_name_unique` ON `secrets` (`name`);
+CREATE UNIQUE INDEX `secrets_live_name` ON `secrets` (`name`) WHERE "secrets"."revoked_at" is null;

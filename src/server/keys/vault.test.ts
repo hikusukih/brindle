@@ -6,9 +6,10 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/index.js";
 import { secrets } from "../db/schema.js";
-import { aadFor, open } from "./crypto.js";
+import { open } from "./crypto.js";
 import { openVault, Vault, VaultError } from "./index.js";
 import { masterKeyBytes } from "./master-key.js";
+import { aadOfRow } from "./vault.js";
 
 const value = "sk-test-1234abcd1234abcd";
 const scope = { hosts: ["api.example.com"] };
@@ -26,7 +27,7 @@ function setup() {
 const plaintextOf = (ctx: ReturnType<typeof setup>, name: string) => {
   const row = ctx.db.select().from(secrets).where(eq(secrets.name, name)).get();
   if (!row) throw new Error("no such secret");
-  return open(readFileSync(ctx.keyFile), row, aadFor(row.id, row.name, row.scopeHash));
+  return open(readFileSync(ctx.keyFile), row, aadOfRow(row));
 };
 
 describe("the vault's storage", () => {
@@ -66,13 +67,28 @@ describe("the vault's storage", () => {
       .where(eq(secrets.name, "one"))
       .run();
     expect(() => ctx.reopen()).not.toThrow();
-    // Widening the scope in the database changes its hash, which is part of what the value is bound to.
-    ctx.db
-      .update(secrets)
-      .set({ scopeHash: "0".repeat(64) })
-      .where(eq(secrets.name, "one"))
-      .run();
-    expect(() => ctx.reopen()).toThrow(/does not open the vault/);
+    // Editing anything the value is bound to makes it undecryptable: the scope, the kind, the header and the expiry.
+    const edits = [
+      { scope: JSON.stringify({ ...JSON.parse(one?.scope ?? "{}"), hosts: ["evil.example.com"] }) },
+      { kind: "basic_auth" },
+      { headerName: "X-Other" },
+      { expiresAt: "2999-01-01T00:00:00.000Z" },
+    ];
+    for (const edit of edits) {
+      ctx.db.update(secrets).set(edit).where(eq(secrets.name, "one")).run();
+      expect(() => ctx.reopen(), JSON.stringify(edit)).toThrow(/does not open the vault/);
+      ctx.db
+        .update(secrets)
+        .set({
+          scope: one?.scope ?? "",
+          kind: one?.kind ?? "",
+          headerName: one?.headerName ?? null,
+          expiresAt: one?.expiresAt ?? null,
+        })
+        .where(eq(secrets.name, "one"))
+        .run();
+    }
+    expect(() => ctx.reopen()).not.toThrow();
   });
 
   it("returns metadata and never a value from store, describe or list", () => {
@@ -185,6 +201,30 @@ describe("who may see which secret", () => {
     const row = ctx.db.select().from(secrets).get();
     expect(row).toMatchObject({ ciphertext: "", nonce: "" });
     expect(() => ctx.reopen()).not.toThrow();
+  });
+
+  it("lets a revoked name be stored again, and the new secret is the one found by name", () => {
+    const ctx = setup();
+    ctx.vault.store({ name: "weather", kind: "bearer", value, scope });
+    ctx.vault.revoke("weather");
+    expect(() =>
+      ctx.vault.store({ name: "weather", kind: "bearer", value: "another-value-1234", scope }),
+    ).not.toThrow();
+    expect(ctx.vault.describe("weather")?.status).toBe("active");
+    expect(() => ctx.vault.store({ name: "weather", kind: "bearer", value, scope })).toThrow(/already exists/);
+    expect(ctx.vault.revoke("weather")).toBe(true);
+    expect(ctx.vault.describe("weather")?.status).toBe("revoked");
+    expect(() => ctx.reopen()).not.toThrow();
+  });
+
+  it("refuses a wildcard over a whole top-level domain", () => {
+    const ctx = setup();
+    expect(() => ctx.vault.store({ name: "wide", kind: "bearer", value, scope: { hosts: ["*.com"] } })).toThrow(
+      /top-level/,
+    );
+    expect(() =>
+      ctx.vault.store({ name: "ok", kind: "bearer", value, scope: { hosts: ["*.example.com"] } }),
+    ).not.toThrow();
   });
 });
 
