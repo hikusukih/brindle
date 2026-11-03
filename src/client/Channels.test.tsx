@@ -96,7 +96,7 @@ describe("a goal's channel", () => {
   });
 
   const goalRoutes = (extra: Record<string, Handler> = {}) => ({
-    "/api/models": () => Response.json(twoModels),
+    "/api/models": () => Response.json({ default: null, models: [] }),
     "/api/channels": () => Response.json([channel("g1", "Rust", null, "goal1")]),
     "/api/channels/g1/runs": () => Response.json([]),
     "/api/goals/goal1": () =>
