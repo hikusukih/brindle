@@ -1,7 +1,7 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { createChannel } from "../channels.js";
 import { openDatabase } from "../db/index.js";
-import { goals, schedules } from "../db/schema.js";
+import { channels, goals, schedules } from "../db/schema.js";
 import { Scheduler } from "../scheduler.js";
 import { currentStatement } from "../scope-statements.js";
 import { proposeGoalTool } from "./goal.js";
@@ -22,7 +22,7 @@ function setup() {
     log: () => {},
     emit: () => {},
   };
-  return { db, tool, ctx };
+  return { db, scheduler, tool, ctx };
 }
 
 const draft = {
@@ -79,5 +79,23 @@ describe("propose_goal", () => {
     const result = await tool.execute({ ...draft, schedule: { cron: "not a cron", prompt: "p" } }, ctx);
     expect(result).toMatch(/^Error/);
     expect(db.select().from(goals).all()).toEqual([]);
+  });
+
+  it("rolls the goal back when saving the schedule fails after the draft passed its checks", async () => {
+    const { db, scheduler, tool, ctx } = setup();
+    vi.spyOn(scheduler, "createSchedule").mockImplementation(() => {
+      throw new Error("disk full");
+    });
+    const result = await tool.execute(draft, ctx);
+    expect(result).toMatch(/^Error: the goal was not created: disk full/);
+    expect(db.select().from(goals).all()).toEqual([]);
+    expect(db.select().from(schedules).all()).toEqual([]);
+    expect(
+      db
+        .select()
+        .from(channels)
+        .all()
+        .map((c) => c.name),
+    ).toEqual(["Chat"]);
   });
 });
