@@ -31,9 +31,11 @@ describe("App", () => {
       vi.fn(async (url: string) =>
         url.includes("/runs")
           ? Response.json([])
-          : url.startsWith("/api/channels")
-            ? Response.json([{ id: "c2", name: "Other", isHome: false, archivedAt: null }, home])
-            : Response.json({ message: "Hello from Brindle.", since: "2026-01-02T03:04:05.000Z" }),
+          : url.startsWith("/api/models")
+            ? Response.json({ default: null, models: [] })
+            : url.startsWith("/api/channels")
+              ? Response.json([{ id: "c2", name: "Other", isHome: false, archivedAt: null }, home])
+              : Response.json({ message: "Hello from Brindle.", since: "2026-01-02T03:04:05.000Z" }),
       ),
     );
     render(<App />);
