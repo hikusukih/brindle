@@ -281,10 +281,18 @@ describe("channel view", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
-  it("shows which model the channel uses and lets the user set one", async () => {
+  const twoModels = {
+    default: "openai:gpt-test",
+    models: [
+      { spec: "openai:gpt-test", provider: "openai", keyPresent: true },
+      { spec: "anthropic:claude-test", provider: "anthropic", keyPresent: true },
+    ],
+  };
+
+  it("shows which model the channel uses and lets the user pick one from the configured list", async () => {
     window.location.hash = "#/channels/c1";
     const calls = stubFetch({
-      "/api/models": () => Response.json({ default: "openai:gpt-test" }),
+      "/api/models": () => Response.json(twoModels),
       "/api/channels": () => Response.json([channel("c1", "Plans")]),
       "/api/channels/c1/runs": () => Response.json([]),
       "/api/channels/c1/model": (_m, body) =>
@@ -292,11 +300,26 @@ describe("channel view", () => {
     });
     render(<ChannelsScreen />);
     expect(await screen.findByText("Model: openai:gpt-test (default)")).toBeTruthy();
+    expect(screen.queryByRole("textbox", { name: "Model for this channel" })).toBeNull();
 
-    fireEvent.change(screen.getByLabelText("Model for this channel"), { target: { value: "anthropic:claude-test" } });
-    fireEvent.click(screen.getByRole("button", { name: "Set model" }));
+    fireEvent.change(await screen.findByLabelText("Model for this channel"), {
+      target: { value: "anthropic:claude-test" },
+    });
     expect(await screen.findByText("Model: anthropic:claude-test")).toBeTruthy();
     expect(calls).toContain("POST /api/channels/c1/model");
+  });
+
+  it("says so in the header when the channel's model is no longer configured", async () => {
+    window.location.hash = "#/channels/c1";
+    stubFetch({
+      "/api/models": () => Response.json(twoModels),
+      "/api/channels": () => Response.json([{ ...channel("c1", "Plans"), model: "openai:retired" }]),
+      "/api/channels/c1/runs": () => Response.json([]),
+    });
+    render(<ChannelsScreen />);
+    expect((await screen.findByRole("note")).textContent).toContain(
+      "openai:retired is no longer configured, so this channel uses the default (openai:gpt-test).",
+    );
   });
 
   it("rebuilds each channel's own history and failure after a reload", async () => {
