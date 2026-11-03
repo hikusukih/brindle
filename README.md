@@ -60,6 +60,8 @@ Each channel shows the model it uses under its name, and a channel can be set to
 
 ### Trying runs with the scripted model
 
+Credentials for goals will live in a vault, encrypted with a master key that is kept outside the data directory so a backup of the data alone is useless. Set `BRINDLE_MASTER_KEY_FILE` to the path of a file (for example on a separate Docker volume). If the file does not exist and the vault is empty, the server creates it with owner-only permissions; if the vault holds secrets and the file is missing, readable by others, or the wrong key, the server refuses to start and says why. Nothing uses the vault yet. Keep a copy of the key file somewhere safe: without it the secrets cannot be recovered.
+
 For development and acceptance without a key, set `BRINDLE_MODEL=scripted` and `BRINDLE_SCRIPTED_FIXTURE` to a JSON file of canned turns.
 
 ```sh

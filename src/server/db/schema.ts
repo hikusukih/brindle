@@ -170,3 +170,23 @@ export const contextReports = sqliteTable(
     index("context_reports_run_idx").on(t.runId, t.step),
   ],
 );
+
+// The key manager's vault (docs/design/key-manager.md). Only src/server/keys reads or writes this table; the value is
+// ciphertext, bound to the row's id, name and scope hash so it cannot be moved to another secret or have its scope edited.
+export const secrets = sqliteTable("secrets", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  // bearer | api_key | basic_auth
+  kind: text("kind").notNull(),
+  // The header an api_key is sent in; null for the other kinds.
+  headerName: text("header_name"),
+  // JSON of the secret's scope; scopeHash is its SHA-256 and is part of the encryption's associated data.
+  scope: text("scope").notNull(),
+  scopeHash: text("scope_hash").notNull(),
+  nonce: text("nonce").notNull(),
+  ciphertext: text("ciphertext").notNull(),
+  createdAt: text("created_at").notNull(),
+  expiresAt: text("expires_at"),
+  lastUsedAt: text("last_used_at"),
+  revokedAt: text("revoked_at"),
+});
