@@ -609,6 +609,8 @@ export class RunEngine {
           this.limits.contextWindow,
           summary ? estimateTokens(summary.text) : 0,
           estimateTokens(harnessInstructions),
+          // The same tool definitions assembly subtracts, so the fold's lines are taken of the share layer 4 really gets.
+          this.tools.size ? estimateTokens(JSON.stringify(this.tools.definitions())) : 0,
         );
         const result = await foldIfNeeded(this.db, channelId, unfolded, {
           share,

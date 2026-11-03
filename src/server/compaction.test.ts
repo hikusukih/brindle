@@ -4,8 +4,10 @@ import { summaryCapTokens } from "./compaction.js";
 import { runContext } from "./context.js";
 import { openDatabase } from "./db/index.js";
 import { artifacts, summaries } from "./db/schema.js";
+import type { ModelAdapter, ModelEvent, ModelRequest } from "./model/adapter.js";
 import { ScriptedModel } from "./model/scripted.js";
 import { channelTranscript, defaultLimits, RunEngine } from "./runs.js";
+import { ToolRegistry } from "./tools/registry.js";
 
 // A window this small leaves layer 4 about 450 tokens, so a few padded messages cross the 70% line.
 const limits = { ...defaultLimits, contextWindow: 4_600 };
@@ -125,5 +127,78 @@ describe("rolling compaction", () => {
     for (const w of ["one", "two", "three"]) await say(ctx, pad(w));
     const row = ctx.db.select().from(summaries).get();
     expect(JSON.parse(row?.artifacts ?? "[]")).toEqual(["art-1234"]);
+  });
+
+  it("folds before assembly has to drop anything when a large tool set shrinks layer 4", async () => {
+    const db = openDatabase(":memory:");
+    const chatModel = new ScriptedModel({ turns: Array.from({ length: 12 }, () => ({ text: ["ok"] })) });
+    const utility = new ScriptedModel({ turns: [{ text: ["Summary."] }, { text: ["Summary again."] }] });
+    const tools = new ToolRegistry().register({
+      name: "big",
+      description: "d ".repeat(200),
+      effect: "read",
+      parameters: { type: "object", properties: {} },
+      execute: async () => "x",
+    });
+    const engine = new RunEngine(db, chatModel, limits, tools, { utilityModel: utility });
+    const channel = createChannel(db, "Test");
+    const drops: boolean[] = [];
+    for (const w of ["one", "two", "three", "four"]) {
+      const run = engine.start(channel.id, pad(w));
+      await engine.whenSettled(run.id);
+      await engine.whenCompacted(channel.id);
+      drops.push(runContext(db, run.id).some((c) => c.report?.breaks.includes("emergency_drop")));
+    }
+    expect(db.select().from(summaries).all().length).toBeGreaterThan(0);
+    expect(drops).not.toContain(true);
+  });
+
+  it("leaves history verbatim when the utility model outlasts the time limit", async () => {
+    const db = openDatabase(":memory:");
+    const chatModel = new ScriptedModel({ turns: Array.from({ length: 12 }, () => ({ text: ["ok"] })) });
+    const stalled: ModelAdapter = {
+      async *stream(request: ModelRequest): AsyncGenerator<ModelEvent> {
+        await new Promise((_, reject) => request.signal?.addEventListener("abort", () => reject(new Error("aborted"))));
+      },
+    };
+    const engine = new RunEngine(db, chatModel, limits, undefined, { utilityModel: stalled, housekeepingMillis: 30 });
+    const channel = createChannel(db, "Test");
+    for (const w of ["one", "two", "three"]) {
+      const run = engine.start(channel.id, pad(w));
+      await engine.whenSettled(run.id);
+      await engine.whenCompacted(channel.id);
+    }
+    expect(db.select().from(summaries).all()).toEqual([]);
+    expect(channelTranscript(db, channel.id)).toHaveLength(3);
+  });
+
+  it("does not start a second fold while one is in flight", async () => {
+    const db = openDatabase(":memory:");
+    const chatModel = new ScriptedModel({ turns: Array.from({ length: 12 }, () => ({ text: ["ok"] })) });
+    let calls = 0;
+    let release: () => void = () => {};
+    const slow: ModelAdapter = {
+      async *stream(): AsyncGenerator<ModelEvent> {
+        calls++;
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+        yield { type: "text", text: "Summary." };
+        yield { type: "done", stop: "end", usage: { inputTokens: 0, outputTokens: 0 } };
+      },
+    };
+    const engine = new RunEngine(db, chatModel, limits, undefined, { utilityModel: slow, housekeepingMillis: 5_000 });
+    const channel = createChannel(db, "Test");
+    for (const w of ["one", "two", "three"]) {
+      const run = engine.start(channel.id, pad(w));
+      await engine.whenSettled(run.id);
+    }
+    await new Promise((r) => setTimeout(r, 20));
+    const fourth = engine.start(channel.id, pad("four"));
+    await engine.whenSettled(fourth.id);
+    await new Promise((r) => setTimeout(r, 20));
+    expect(calls).toBe(1);
+    release();
+    await engine.whenCompacted(channel.id);
   });
 });
