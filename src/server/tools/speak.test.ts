@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 import { ArtifactStore } from "../artifacts.js";
 import { createChannel } from "../channels.js";
 import { openDatabase } from "../db/index.js";
+import { readArtifactTool } from "./artifacts.js";
 import { builtInTools } from "./index.js";
 import { speakTool } from "./speak.js";
 
@@ -43,9 +44,11 @@ describe("speak", () => {
     expect(tool.effect).toBe("local");
     const result = await tool.execute({ title: "Morning brief", text: "Good morning." }, ctx);
     expect(result).toMatch(/^Saved audio "Morning brief"/);
-    expect(seen[0]?.url).toBe("http://192.0.2.10:8880/v1/audio/speech");
-    expect((seen[0]?.init.headers as Record<string, string>).authorization).toBe("Bearer sk-test-1234abcd1234abcd");
-    expect(JSON.parse(String(seen[0]?.init.body))).toMatchObject({
+    const call = seen[0];
+    expect(call?.url).toBe("http://192.0.2.10:8880/v1/audio/speech");
+    const headers = (call?.init.headers ?? {}) as Record<string, string>;
+    expect(headers.authorization).toBe("Bearer sk-test-1234abcd1234abcd");
+    expect(JSON.parse(String(call?.init.body))).toMatchObject({
       model: "tts-test",
       voice: "alloy",
       input: "Good morning.",
@@ -87,5 +90,8 @@ describe("speak", () => {
     await tool.execute({ title: "Brief", text: "hello" }, ctx);
     expect(store.find({ query: "\u0001" })).toEqual([]);
     expect(store.find({ query: "brief" })).toHaveLength(1);
+    const [a] = store.list({ kind: "audio" });
+    const read = await readArtifactTool(store).execute({ id: a?.id ?? "" }, ctx);
+    expect(read).toMatch(/audio file; it has no text to read/);
   });
 });
