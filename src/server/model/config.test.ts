@@ -43,8 +43,12 @@ describe("modelRegistry", () => {
       /turns/,
     );
     expect(() => modelRegistry({ BRINDLE_MODEL: "gpt" })).toThrow(ModelConfigError);
-    expect(() => modelRegistry({}).validate("anthropic:claude-test")).toThrow(/ANTHROPIC_API_KEY/);
-    expect(() => modelRegistry({}).validate("openai:gpt-test")).toThrow(/OPENAI_API_KEY/);
-    expect(() => modelRegistry({}).validate("openai:")).toThrow(/not a supported model/);
+    expect(() => modelRegistry({ BRINDLE_MODELS: "anthropic:claude-test" }).validate("anthropic:claude-test")).toThrow(
+      /ANTHROPIC_API_KEY/,
+    );
+    expect(() => modelRegistry({ BRINDLE_MODELS: "openai:gpt-test" }).validate("openai:gpt-test")).toThrow(
+      /OPENAI_API_KEY/,
+    );
+    expect(() => modelRegistry({}).validate("openai:gpt-test")).toThrow(/not one of the configured/);
   });
 });
