@@ -45,6 +45,58 @@ describe("ArtifactsScreen", () => {
     expect(screen.getByText(/from deleted channel Lost/)).toBeTruthy();
   });
 
+  it("opens a document as text with the token in the header, and never as markup", async () => {
+    window.sessionStorage.setItem("brindle-token", "tok");
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith("/api/artifacts/")
+        ? new Response("<h1>Hi</h1><script>alert(1)</script>", { headers: { "content-type": "text/plain" } })
+        : Response.json([art({})]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<ArtifactsScreen empty={empty} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    expect(await screen.findByText("<h1>Hi</h1><script>alert(1)</script>")).toBeTruthy();
+    expect(container.querySelector("script")).toBeNull();
+    expect([...container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Artifacts"]);
+    expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/a/file", { headers: { authorization: "Bearer tok" } });
+    window.sessionStorage.clear();
+  });
+
+  it("offers an HTML page as a download and never puts its markup in the page", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:test");
+    URL.revokeObjectURL = vi.fn();
+    const fetchMock = vi.fn(async (url: string) =>
+      url.startsWith("/api/artifacts/")
+        ? new Response("<h1>Planted</h1><script>alert(1)</script>", { headers: { "content-type": "text/html" } })
+        : Response.json([art({ kind: "page", title: "Site", mime: "text/html" })]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    const { container } = render(<ArtifactsScreen empty={empty} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    const link = (await screen.findByRole("link", { name: "Download Site" })) as HTMLAnchorElement;
+    expect(link.getAttribute("href")).toBe("blob:test");
+    expect(link.getAttribute("download")).toBe("Site");
+    expect(container.querySelector("script, iframe")).toBeNull();
+    expect([...container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Artifacts"]);
+    expect(container.textContent).not.toContain("Planted");
+    const made = (URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as Blob;
+    expect(made.type).toBe("application/octet-stream");
+  });
+
+  it("says so when the file cannot be fetched", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.startsWith("/api/artifacts/")
+          ? Response.json({ message: "No such artifact." }, { status: 404 })
+          : Response.json([art({})]),
+      ),
+    );
+    render(<ArtifactsScreen empty={empty} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("No such artifact.");
+  });
+
   it("asks the server for the chosen kind and scope", async () => {
     const fetchMock = vi.fn(async () => Response.json([]));
     vi.stubGlobal("fetch", fetchMock);

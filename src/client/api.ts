@@ -45,6 +45,20 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
 export const channelsChanged = "brindle:channels-changed";
 export const announceChannelsChanged = () => window.dispatchEvent(new Event(channelsChanged));
 
+/** The bytes of an artifact's file. The token travels in the header, which is why a plain link cannot open it. */
+export async function fetchArtifactFile(id: string): Promise<Blob> {
+  const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/file`, { headers: authHeaders() });
+  if (res.status === 401) {
+    setToken(null);
+    window.dispatchEvent(new Event(unauthorizedEvent));
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `Server answered ${res.status}`);
+  }
+  return res.blob();
+}
+
 export type Artifact = {
   id: string;
   title: string;
@@ -60,3 +74,6 @@ export type Artifact = {
   /** True while the channel that made it still exists. */
   scopeLive: boolean;
 };
+
+export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+export type ModelList = { default: string | null; models: ModelInfo[] };
