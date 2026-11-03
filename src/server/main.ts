@@ -12,6 +12,7 @@ import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { PurposeDrafter } from "./purpose.js";
 import { RunEngine } from "./runs.js";
+import { getSetting } from "./settings.js";
 import { builtInTools } from "./tools/index.js";
 
 applyLegacyEnv(process.env);
@@ -34,6 +35,17 @@ if (token.generated) {
 const builtClient = fileURLToPath(new URL("../../dist/client", import.meta.url));
 // With no default model and none chosen for a channel, starting a run answers 503.
 const models = modelRegistry(process.env);
+// The default the user chose in Settings, unless that model is no longer configured.
+const chosenDefault = getSetting(db, "default_model");
+if (chosenDefault) {
+  try {
+    models.setDefault(chosenDefault);
+  } catch {
+    console.warn(
+      `The default model chosen in Settings (${chosenDefault}) is no longer configured; using BRINDLE_MODEL.`,
+    );
+  }
+}
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
 const tools = builtInTools(process.env, artifacts);
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
@@ -44,14 +56,20 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
-const engine = new RunEngine(db, (spec) => models.resolve(spec), undefined, tools);
+const engine = new RunEngine(
+  db,
+  // A channel whose model is no longer configured falls back to the default; the channel header says so.
+  (spec) => models.resolveForChannel(spec),
+  undefined,
+  tools,
+);
 // Housekeeping calls (so far, drafting purpose statements) use the utility model, else the channel's own.
 const utilitySpec = process.env.BRINDLE_UTILITY_MODEL?.trim() || undefined;
 if (utilitySpec) models.validate(utilitySpec);
 const purpose = new PurposeDrafter(db, (channelId) => {
   const spec = utilitySpec ?? getChannel(db, channelId).model;
   return {
-    model: models.resolve(spec),
+    model: models.resolveForChannel(spec),
     // 10 minutes, the default of docs/design/context.md; P2.11's per-model setting replaces it.
     millis: 10 * 60_000,
   };

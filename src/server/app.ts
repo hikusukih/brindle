@@ -33,6 +33,7 @@ import {
   restoreBrief,
   restoreGoal,
 } from "./goals.js";
+import type { ModelRegistry } from "./model/config.js";
 import type { PurposeDrafter } from "./purpose.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
@@ -43,6 +44,7 @@ import {
   statementVersions,
   writeStatement,
 } from "./scope-statements.js";
+import { setSetting } from "./settings.js";
 
 export type Greeting = {
   message: string;
@@ -54,7 +56,7 @@ type AppOptions = {
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
   // What channels may be set to use; absent, setting a channel's model is refused.
-  models?: { defaultSpec?: string; validate: (spec: string) => void };
+  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
   // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
   purpose?: PurposeDrafter;
   // Where artifacts live; absent, channel deletes cannot remove any.
@@ -170,7 +172,20 @@ export function createApp({ db, engine, models, artifacts, purpose, scheduler, c
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(renameChannel(db, c.req.param("id"), await nameFrom(c)));
   });
-  app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null }));
+  // No key and no endpoint ever leave the server: only the spec, its provider and whether a key is present.
+  app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null, models: models?.list() ?? [] }));
+  app.put("/api/settings/default-model", async (c) => {
+    const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };
+    if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
+    if (typeof model !== "string") throw new HTTPException(400, { message: "model must be a string." });
+    try {
+      models.setDefault(model);
+    } catch (error) {
+      throw new HTTPException(400, { message: (error as Error).message });
+    }
+    setSetting(db, "default_model", model);
+    return c.json({ default: models.defaultSpec ?? null });
+  });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
     const validate =
