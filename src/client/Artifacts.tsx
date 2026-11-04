@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { type Artifact, api, fetchArtifactFile } from "./api";
 
-const kinds = ["document", "code", "data", "page", "link"] as const;
+const kinds = ["document", "code", "data", "page", "link", "audio"] as const;
 const scopes = ["channel", "goal"] as const;
 const select = "min-h-11 rounded-lg border border-slate-300 px-3 text-sm";
 
@@ -11,12 +11,22 @@ function Source({ a }: { a: Artifact }) {
   return (
     <>
       from <a href={`#/channels/${a.scopeId}`}>{a.scopeName}</a>
-      {a.runId && `, run ${a.runId.slice(0, 8)}`}
+      {a.runId && (
+        <>
+          , <a href={`#/channels/${a.scopeId}/runs/${a.runId}`}>run {a.runId.slice(0, 8)}</a>
+        </>
+      )}
     </>
   );
 }
 
-type Opened = { kind: "text"; text: string } | { kind: "download"; url: string; name: string };
+type Opened =
+  | { kind: "text"; text: string }
+  | { kind: "download"; url: string; name: string }
+  | { kind: "audio"; url: string };
+
+// The only types the server stores for audio; anything else is handled as an opaque download.
+const playable = new Set(["audio/mpeg", "audio/wav", "audio/ogg", "audio/flac"]);
 
 // A model wrote these files, perhaps from fetched web text. They are only ever shown as text through React (which
 // escapes it) or handed over as a download of opaque bytes; nothing here puts a file's content into the page as markup.
@@ -27,7 +37,7 @@ function OpenArtifact({ a }: { a: Artifact }) {
 
   useEffect(() => {
     return () => {
-      if (opened?.kind === "download") URL.revokeObjectURL(opened.url);
+      if (opened?.kind === "download" || opened?.kind === "audio") URL.revokeObjectURL(opened.url);
     };
   }, [opened]);
 
@@ -37,6 +47,9 @@ function OpenArtifact({ a }: { a: Artifact }) {
       const blob = await fetchArtifactFile(a.id);
       if (a.kind === "document" || a.kind === "code") {
         setOpened({ kind: "text", text: await blob.text() });
+      } else if (a.kind === "audio" && playable.has(a.mime)) {
+        // Audio is played, never rendered: the element cannot run script, and the type is the one the server stored.
+        setOpened({ kind: "audio", url: URL.createObjectURL(new Blob([blob], { type: a.mime })) });
       } else {
         const bytes = new Blob([blob], { type: "application/octet-stream" });
         setOpened({
@@ -74,6 +87,10 @@ function OpenArtifact({ a }: { a: Artifact }) {
         <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded-lg bg-slate-50 p-3 text-sm">
           {opened.text}
         </pre>
+      )}
+      {opened?.kind === "audio" && (
+        // biome-ignore lint/a11y/useMediaCaption: speech made from text the user can already read in the conversation
+        <audio controls src={opened.url} aria-label={a.title} className="w-full" />
       )}
       {opened?.kind === "download" && (
         <a href={opened.url} download={opened.name} className="min-h-11 self-start text-sm font-medium underline">
