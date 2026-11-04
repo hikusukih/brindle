@@ -39,6 +39,7 @@ import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./ru
 import type { Scheduler } from "./scheduler.js";
 import { ScopeStatementError } from "./scope-statements.js";
 import { setSetting } from "./settings.js";
+import { getTimeZone, setTimeZone, TimeZoneError } from "./time-zone.js";
 
 export type Greeting = {
   message: string;
@@ -55,13 +56,24 @@ type AppOptions = {
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
   scheduler?: Scheduler;
+  // Called after the user's time zone changes, so the scheduler (P4.12) can move its next fires.
+  onTimeZoneChange?: (timeZone: string) => void;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;
   // SHA-256 of the login token. Absent only in tests; main.ts always passes it.
   authHash?: Buffer;
 };
 
-export function createApp({ db, engine, models, artifacts, scheduler, clientRoot, authHash }: AppOptions) {
+export function createApp({
+  db,
+  engine,
+  models,
+  artifacts,
+  scheduler,
+  onTimeZoneChange,
+  clientRoot,
+  authHash,
+}: AppOptions) {
   const app = new Hono();
 
   if (authHash) app.use("/api/*", requireToken(authHash));
@@ -78,7 +90,18 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
     return c.json(greeting);
   });
 
+  // The user's time zone. The browser sends its own once, with onlyIfUnset, the first time the app opens.
+  app.get("/api/settings/time-zone", (c) => c.json({ timeZone: getTimeZone(db) }));
+  app.put("/api/settings/time-zone", async (c) => {
+    const input = (await c.req.json().catch(() => ({}))) as { timeZone?: unknown; onlyIfUnset?: unknown };
+    const before = getTimeZone(db);
+    const timeZone = setTimeZone(db, input.timeZone, { onlyIfUnset: input.onlyIfUnset === true });
+    if (timeZone !== before) onTimeZoneChange?.(timeZone);
+    return c.json({ timeZone });
+  });
+
   app.onError((err, c) => {
+    if (err instanceof TimeZoneError) return c.json({ error: "invalid_time_zone", message: err.message }, 400);
     if (err instanceof ChannelError) {
       const status = err.code === "not_found" ? 404 : err.code === "archived" ? 409 : 400;
       return c.json({ error: err.code, message: err.message }, status);

@@ -49,6 +49,10 @@ export type GoalState = {
   createdAt?: string;
 };
 
+// The side rail lists channels too, and a change made on the Channels screen does not change the hash, so it says so here.
+export const channelsChanged = "brindle:channels-changed";
+export const announceChannelsChanged = () => window.dispatchEvent(new Event(channelsChanged));
+
 /** The bytes of an artifact's file. The token travels in the header, which is why a plain link cannot open it. */
 export async function fetchArtifactFile(id: string): Promise<Blob> {
   const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/file`, { headers: authHeaders() });

@@ -12,6 +12,7 @@ import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { RunEngine } from "./runs.js";
 import { getSetting } from "./settings.js";
+import { getTimeZone } from "./time-zone.js";
 import { builtInTools } from "./tools/index.js";
 
 applyLegacyEnv(process.env);
@@ -62,6 +63,7 @@ const engine = new RunEngine(
   undefined,
   tools,
 );
+engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
 const app = createApp({
