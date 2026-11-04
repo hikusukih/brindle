@@ -84,7 +84,8 @@ if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed
 const app = createApp({
   db,
   engine,
-  models: { ...models, settings: (spec) => settings.forSpec(spec) },
+  // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
+  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
   artifacts,
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,

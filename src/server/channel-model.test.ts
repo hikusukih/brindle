@@ -226,7 +226,7 @@ describe("limits follow the model a request really uses", () => {
     const app = createApp({
       db,
       engine,
-      models: { ...models, settings: (spec) => store.forSpec(spec) },
+      models: Object.assign(models, { settings: (spec: string | null) => store.forSpec(spec) }),
     });
     return { db, engine, app, models, channel: createChannel(db, "Test") };
   }
@@ -250,6 +250,8 @@ describe("limits follow the model a request really uses", () => {
       body: JSON.stringify({ model: "openai:other" }),
     });
     expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ default: "openai:other" });
+    expect(await (await w.app.request("/api/models")).json()).toMatchObject({ default: "openai:other" });
     expect(await (await w.app.request(`/api/channels/${w.channel.id}/model-settings`)).json()).toMatchObject({
       model: "openai:other",
       contextWindow: 16_000,
