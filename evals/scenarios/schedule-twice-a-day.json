@@ -1,0 +1,37 @@
+{
+  "name": "schedule-twice-a-day",
+  "description": "\"Twice a day\" becomes a proposal the user approves; the schedule exists only after the approval.",
+  "messages": ["Run my brief twice a day."],
+  "goal": {
+    "title": "Morning brief",
+    "brief": "A short brief of what matters, on a schedule."
+  },
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_schedule",
+            "arguments": {
+              "cron": "0 8,20 * * *",
+              "prompt": "Write the morning or evening brief."
+            }
+          }
+        ]
+      },
+      {
+        "text": ["Scheduled for 8:00 and 20:00 every day."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["approve"],
+      "schedules": 1,
+      "crons": ["0 8,20 * * *"],
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}
