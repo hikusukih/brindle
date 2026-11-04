@@ -5,14 +5,17 @@ import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events } from "../src/server/db/schema.js";
+import { artifacts, events, schedules } from "../src/server/db/schema.js";
+import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
 import { effectFor, mcpTool } from "../src/server/mcp/index.js";
 import type { ModelAdapter } from "../src/server/model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
+import { Scheduler } from "../src/server/scheduler.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
+import { proposeScheduleTool } from "../src/server/tools/schedule.js";
 
 // One scenario is one channel and a list of user messages, each sent as its own run. The expectations are
 // per run, in order. `script` feeds the scripted model in CI; against a real model it is ignored, so
@@ -32,6 +35,10 @@ export type RunExpectation = {
   executed?: string[];
   /** Whether the first tool result was cut for the model. */
   toolResultTruncated?: boolean;
+  /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
+  schedules?: number;
+  /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
+  crons?: string[];
 };
 
 /** A stand-in tool whose result is fixed, so scenarios can exercise effect levels and result sizing. */
@@ -58,6 +65,9 @@ export type SeedArtifact = {
   fromChannel: string;
 };
 
+/** Runs the scenario in a goal's own channel and adds the real `propose_schedule` tool, with the clock in New York. */
+export type ScenarioGoal = { title: string; brief: string };
+
 export type Scenario = {
   name: string;
   description: string;
@@ -67,6 +77,7 @@ export type Scenario = {
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
+  goal?: ScenarioGoal;
   expect: RunExpectation[];
 };
 
@@ -133,13 +144,21 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     tools.register(findArtifactsTool(store));
     tools.register(readArtifactTool(store));
   }
+  // The scheduler is only used to store and read schedules; nothing here starts a run from one.
+  const scheduler = new Scheduler(
+    db,
+    { prepareRun: () => "unused", beginRun: () => {}, goalBusy: () => false },
+    { timeZone: "America/New_York" },
+  );
+  const goal = scenario.goal ? createGoal(db, scenario.goal) : undefined;
+  if (goal) tools.register(proposeScheduleTool(db, scheduler));
   const engine = new RunEngine(
     db,
     live ?? new ScriptedModel(scenario.script),
     { ...defaultLimits, ...scenario.limits },
     tools,
   );
-  const channel = createChannel(db, scenario.name);
+  const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
   const failures: string[] = [];
 
   if (scenario.messages.length !== scenario.expect.length) {
@@ -208,6 +227,15 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     if (want.toolResultTruncated !== undefined && results[0]?.truncated !== want.toolResultTruncated) {
       failures.push(
         `${label}: first tool result truncated was ${results[0]?.truncated}, expected ${want.toolResultTruncated}`,
+      );
+    }
+    const made = db.select().from(schedules).orderBy(schedules.createdAt).all();
+    if (want.schedules !== undefined && made.length !== want.schedules) {
+      failures.push(`${label}: ${made.length} schedule(s) exist, expected ${want.schedules}`);
+    }
+    if (!live && want.crons && made.map((s) => s.cron).join("|") !== want.crons.join("|")) {
+      failures.push(
+        `${label}: schedules were [${made.map((s) => s.cron).join(", ")}], expected [${want.crons.join(", ")}]`,
       );
     }
     if (!live && want.eventTypes) {

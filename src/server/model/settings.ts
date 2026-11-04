@@ -88,7 +88,10 @@ export class ModelSettingsStore {
 
   constructor(
     private readonly file: Record<string, Partial<ModelSettings>> = {},
-    private readonly defaultSpec?: string,
+    // Asked on every lookup, since the default can be changed at runtime from Settings.
+    private readonly defaultSpec: () => string | undefined = () => undefined,
+    // A channel whose model is no longer configured runs on the default, so its numbers are the default's.
+    private readonly isConfigured: (spec: string) => boolean = () => true,
   ) {}
 
   /** The specs the settings file mentions, so startup can ask their servers for a window. */
@@ -106,7 +109,8 @@ export class ModelSettingsStore {
   }
 
   forSpec(spec: string | null): ResolvedSettings {
-    const model = spec ?? this.defaultSpec ?? "default";
+    const chosen = spec && this.isConfigured(spec) ? spec : null;
+    const model = chosen ?? this.defaultSpec() ?? "default";
     const own = this.file[model] ?? {};
     const window = own.contextWindow ?? this.windows.get(model);
     return { ...defaultModelSettings, ...own, ...(window ? { contextWindow: window } : {}), model };

@@ -11,6 +11,7 @@ import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { applyServerWindows, loadModelSettings, ModelSettingsStore } from "./model/settings.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
+import { getSetting } from "./settings.js";
 import { builtInTools } from "./tools/index.js";
 
 applyLegacyEnv(process.env);
@@ -33,8 +34,23 @@ if (token.generated) {
 const builtClient = fileURLToPath(new URL("../../dist/client", import.meta.url));
 // With no default model and none chosen for a channel, starting a run answers 503.
 const models = modelRegistry(process.env);
+// The default the user chose in Settings, unless that model is no longer configured.
+const chosenDefault = getSetting(db, "default_model");
+if (chosenDefault) {
+  try {
+    models.setDefault(chosenDefault);
+  } catch {
+    console.warn(
+      `The default model chosen in Settings (${chosenDefault}) is no longer configured; using BRINDLE_MODEL.`,
+    );
+  }
+}
 // Per-model window and limits; a local server's own window is asked for once, now, so a mismatch fails at startup.
-const settings = new ModelSettingsStore(loadModelSettings(join(dataDir, "model-settings.json")), models.defaultSpec);
+const settings = new ModelSettingsStore(
+  loadModelSettings(join(dataDir, "model-settings.json")),
+  () => models.defaultSpec,
+  (spec) => models.list().some((m) => m.spec === spec),
+);
 await applyServerWindows(
   settings,
   [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
@@ -54,7 +70,13 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
-const engine = new RunEngine(db, (spec) => models.resolve(spec), limitsFor, tools);
+const engine = new RunEngine(
+  db,
+  // A channel whose model is no longer configured falls back to the default; the channel header says so.
+  (spec) => models.resolveForChannel(spec),
+  limitsFor,
+  tools,
+);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
 const app = createApp({

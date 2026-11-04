@@ -21,7 +21,7 @@ describe("model settings file", () => {
   });
 
   it("gives a model with no entry the defaults for a CPU-only host, and names the model", () => {
-    const store = new ModelSettingsStore({}, "openai:local");
+    const store = new ModelSettingsStore({}, () => "openai:local");
     expect(store.forSpec(null)).toEqual({ ...defaultModelSettings, model: "openai:local" });
     expect(store.forSpec("anthropic:x").model).toBe("anthropic:x");
     expect(new ModelSettingsStore().forSpec(null).model).toBe("default");
@@ -30,7 +30,7 @@ describe("model settings file", () => {
 
   it("overrides only what the entry sets, keyed by spec", () => {
     const settings = loadModelSettings("s.json", file({ "anthropic:x": { contextWindow: 200_000, warmCache: false } }));
-    const store = new ModelSettingsStore(settings, "openai:local");
+    const store = new ModelSettingsStore(settings, () => "openai:local");
     expect(store.forSpec("anthropic:x")).toMatchObject({ contextWindow: 200_000, warmCache: false, maxSteps: 10 });
     expect(store.forSpec(null).contextWindow).toBe(32_000);
   });
@@ -60,17 +60,17 @@ describe("the server's own window", () => {
   });
 
   it("is used when no window is configured", async () => {
-    const store = new ModelSettingsStore({}, "openai:local");
+    const store = new ModelSettingsStore({}, () => "openai:local");
     await applyServerWindows(store, ["openai:local"], "http://127.0.0.1:8080/v1", server(8192));
     expect(store.forSpec(null).contextWindow).toBe(8192);
   });
 
   it("loses to a configured window that fits, and a configured one that is larger is a configuration error", async () => {
-    const fits = new ModelSettingsStore({ "openai:local": { contextWindow: 4096 } }, "openai:local");
+    const fits = new ModelSettingsStore({ "openai:local": { contextWindow: 4096 } }, () => "openai:local");
     await applyServerWindows(fits, ["openai:local"], "http://127.0.0.1:8080/v1", server(8192));
     expect(fits.forSpec(null).contextWindow).toBe(4096);
 
-    const toBig = new ModelSettingsStore({ "openai:local": { contextWindow: 65_536 } }, "openai:local");
+    const toBig = new ModelSettingsStore({ "openai:local": { contextWindow: 65_536 } }, () => "openai:local");
     await expect(applyServerWindows(toBig, ["openai:local"], "http://127.0.0.1:8080/v1", server(8192))).rejects.toThrow(
       /larger than the server's \(8192\)/,
     );
@@ -80,7 +80,7 @@ describe("the server's own window", () => {
     const never = (async () => {
       throw new Error("should not be called");
     }) as unknown as typeof fetch;
-    const store = new ModelSettingsStore({}, "anthropic:x");
+    const store = new ModelSettingsStore({}, () => "anthropic:x");
     await applyServerWindows(store, ["anthropic:x"], "http://127.0.0.1:8080/v1", never);
     await applyServerWindows(store, ["openai:local"], undefined, never);
     expect(store.forSpec(null).contextWindow).toBe(32_000);

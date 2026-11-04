@@ -33,9 +33,11 @@ import {
   restoreBrief,
   restoreGoal,
 } from "./goals.js";
+import type { ModelRegistry } from "./model/config.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
 import { ScopeStatementError } from "./scope-statements.js";
+import { setSetting } from "./settings.js";
 
 export type Greeting = {
   message: string;
@@ -47,9 +49,8 @@ type AppOptions = {
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
   // What channels may be set to use; absent, setting a channel's model is refused.
-  models?: {
+  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
     defaultSpec?: string;
-    validate: (spec: string) => void;
     // The numbers a channel's model runs under, for the channel view; absent, the view shows none.
     settings?: (spec: string | null) => {
       model: string;
@@ -172,7 +173,8 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(renameChannel(db, c.req.param("id"), await nameFrom(c)));
   });
-  app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null }));
+  // No key and no endpoint ever leave the server: only the spec, its provider and whether a key is present.
+  app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null, models: models?.list() ?? [] }));
   app.get("/api/channels/:id/model-settings", (c) => {
     const channel = getChannel(db, c.req.param("id"));
     const s = models?.settings?.(channel.model);
@@ -184,6 +186,18 @@ export function createApp({ db, engine, models, artifacts, scheduler, clientRoot
       maxTokens: s.maxTokens,
       maxMillis: s.maxMillis,
     });
+  });
+  app.put("/api/settings/default-model", async (c) => {
+    const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };
+    if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
+    if (typeof model !== "string") throw new HTTPException(400, { message: "model must be a string." });
+    try {
+      models.setDefault(model);
+    } catch (error) {
+      throw new HTTPException(400, { message: (error as Error).message });
+    }
+    setSetting(db, "default_model", model);
+    return c.json({ default: models.defaultSpec ?? null });
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
