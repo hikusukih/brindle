@@ -66,7 +66,7 @@ export async function fetchArtifactFile(id: string): Promise<Blob> {
 export type Artifact = {
   id: string;
   title: string;
-  kind: "document" | "code" | "data" | "page" | "link";
+  kind: "document" | "code" | "data" | "page" | "link" | "audio";
   scope: "channel" | "goal";
   scopeId: string;
   /** The scope's name when the artifact was made. */
