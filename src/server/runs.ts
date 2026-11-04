@@ -6,6 +6,7 @@ import {
   ContextOverflow,
   defaultContextWindow,
   fingerprint,
+  homeHistoryShare,
   type PastRun,
   previousRequest,
   recordContext,
@@ -382,13 +383,15 @@ export class RunEngine {
           let stop: string | undefined;
           const tools = this.tools.size ? this.tools.definitions() : undefined;
           let assembled: ReturnType<typeof assembleContext>;
+          const channelRow = getChannel(this.db, channelId);
           try {
             assembled = assembleContext({
               past,
               current: messages,
               window: this.limits.contextWindow,
+              historyWindowShare: channelRow.isHome ? homeHistoryShare : undefined,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
-              model: getChannel(this.db, channelId).model ?? "default",
+              model: channelRow.model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
               today: this.today(),

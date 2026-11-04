@@ -57,6 +57,13 @@
       "when": 1793534340440,
       "tag": "0007_smart_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793621097995,
+      "tag": "0008_far_bill_hollister",
+      "breakpoints": true
     }
   ]
 }

@@ -3,7 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
-import { createChannel } from "../src/server/channels.js";
+import { createChannel, ensureHomeChannel } from "../src/server/channels.js";
+import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
 import { artifacts, events, schedules } from "../src/server/db/schema.js";
 import { createGoal } from "../src/server/goals.js";
@@ -35,6 +36,10 @@ export type RunExpectation = {
   executed?: string[];
   /** Whether the first tool result was cut for the model. */
   toolResultTruncated?: boolean;
+  /** The tokens layer 4 held in this run's last request were at most this many. */
+  historyTokensAtMost?: number;
+  /** This run's last request had no summary layer. */
+  noSummaryLayer?: boolean;
   /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
   schedules?: number;
   /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
@@ -74,6 +79,8 @@ export type Scenario = {
   messages: string[];
   script: ScriptedFixture;
   limits?: Partial<RunLimits>;
+  /** Runs in the Home channel instead of a new channel. */
+  home?: boolean;
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
@@ -158,7 +165,11 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     { ...defaultLimits, ...scenario.limits },
     tools,
   );
-  const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
+  const channel = goal
+    ? { id: goal.channelId }
+    : scenario.home
+      ? ensureHomeChannel(db)
+      : createChannel(db, scenario.name);
   const failures: string[] = [];
 
   if (scenario.messages.length !== scenario.expect.length) {
@@ -228,6 +239,15 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       failures.push(
         `${label}: first tool result truncated was ${results[0]?.truncated}, expected ${want.toolResultTruncated}`,
       );
+    }
+    if (want.historyTokensAtMost !== undefined || want.noSummaryLayer) {
+      const layers = runContext(db, run.id).at(-1)?.report.layers ?? [];
+      const held = layers.find((l) => l.name === "recent_runs")?.tokens ?? 0;
+      if (want.historyTokensAtMost !== undefined && held > want.historyTokensAtMost) {
+        failures.push(`${label}: layer 4 held ${held} tokens, expected at most ${want.historyTokensAtMost}`);
+      }
+      if (want.noSummaryLayer && layers.some((l) => l.name === "summary"))
+        failures.push(`${label}: a summary was sent`);
     }
     const made = db.select().from(schedules).orderBy(schedules.createdAt).all();
     if (want.schedules !== undefined && made.length !== want.schedules) {

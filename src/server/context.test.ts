@@ -44,6 +44,19 @@ describe("assembleContext", () => {
     ]);
   });
 
+  it("caps layer 4 at a share of the window when asked, as for the Home channel", () => {
+    const past = Array.from({ length: 10 }, (_, i) => run(`r${i}`, 1_000));
+    const input = { past, current: [{ role: "user" as const, content: "hi" }], window: 32_000 };
+    expect(assembleContext(input).report.runsDropped).toBe(0);
+    const { report } = assembleContext({ ...input, historyWindowShare: 0.25 });
+    const recent = report.layers.find((l) => l.name === "recent_runs");
+    expect(report.runsDropped).toBeGreaterThan(0);
+    expect(report.breaks).toContain("emergency_drop");
+    expect(recent?.budget).toBe(8_000);
+    expect(recent?.tokens).toBeLessThanOrEqual(8_000);
+    expect(report.layers.some((l) => l.name === "summary")).toBe(false);
+  });
+
   it("never exceeds its budget: drops whole oldest runs down to 40% and says so", () => {
     const past = Array.from({ length: 10 }, (_, i) => run(`r${i}`, 500));
     const { messages, report } = assembleContext({ past, current: [{ role: "user", content: "hi" }], window: 8_000 });

@@ -107,8 +107,26 @@ function NavLinks({ current, orientation }: { current: ScreenId; orientation: "r
   );
 }
 
+// The app opens on the Home channel: with no address in the hash, go there once the channel list is known.
+function useOpenHome() {
+  useEffect(() => {
+    if (window.location.hash) return;
+    let cancelled = false;
+    api<Channel[]>("/api/channels")
+      .then((all) => {
+        const home = all.find((c) => c.isHome);
+        if (home && !cancelled && !window.location.hash) window.location.hash = `#/channels/${home.id}`;
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+}
+
 function Shell() {
   const { format } = useTimeZone();
+  useOpenHome();
   const screen = useScreen();
   const status = useServerStatus();
   const active = screens.find((s) => s.id === screen) ?? screens[0];
