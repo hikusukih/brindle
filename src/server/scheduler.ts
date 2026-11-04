@@ -158,8 +158,9 @@ export class Scheduler {
   }
 
   /**
-   * Run once at startup, before the first poll. A fire left "started" whose run never wrote an event
+   * Run once at startup, before the first poll. A fire left "started" whose run never wrote its message
    * crashed between commit and beginning; it is recorded, not retried, so the worst case is one missed run.
+   * The message, not any event, because the engine's own startup recovery adds an error event to that run.
    */
   recover(now = new Date()): number {
     const started = this.db.select().from(scheduleFires).where(eq(scheduleFires.state, "started")).all();
@@ -167,7 +168,12 @@ export class Scheduler {
     for (const fire of started) {
       const began =
         fire.runId !== null &&
-        this.db.select({ id: events.id }).from(events).where(eq(events.runId, fire.runId)).limit(1).get();
+        this.db
+          .select({ id: events.id })
+          .from(events)
+          .where(and(eq(events.runId, fire.runId), eq(events.type, "message")))
+          .limit(1)
+          .get();
       if (began) continue;
       this.db
         .update(scheduleFires)

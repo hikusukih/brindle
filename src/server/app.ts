@@ -53,9 +53,9 @@ type AppOptions = {
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
-  // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
+  // The server always passes it; absent (in tests), goal archive, restore and delete leave schedules alone.
   scheduler?: Scheduler;
-  // Called after the user's time zone changes, so the scheduler (P4.12) can move its next fires.
+  // Called after the user's time zone changes; the server moves the scheduler's next fires with it.
   onTimeZoneChange?: (timeZone: string) => void;
   // Built client to serve; absent in development, where Vite serves it.
   clientRoot?: string;

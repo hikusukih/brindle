@@ -31,6 +31,11 @@ export const runs = sqliteTable(
     stopReason: text("stop_reason"),
     startedAt: text("started_at").notNull(),
     endedAt: text("ended_at"),
+    // Set when the run's scope is a goal rather than its channel (docs/design/goals.md). No foreign key: deleting a
+    // goal deletes its channel, whose cascade already removes these runs.
+    goalId: text("goal_id"),
+    // user | schedule: who started it. A scheduled run has nobody watching, so it gets the shorter approval timeout.
+    trigger: text("trigger").notNull().default("user"),
   },
   (t) => [index("runs_channel_idx").on(t.channelId, t.startedAt)],
 );
