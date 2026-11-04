@@ -1,6 +1,6 @@
 # Design note: reference documents
 
-Box P3.9. Status: proposed. Implementation waits until this merges, and its boxes are filed as `[plan]` proposals once it does. Terms in bold at their first use here (**run**, **scope** and **card**) are defined in the glossary in `docs/architecture.md`.
+Box P3.9. Status: proposed. Implementation waits until this merges, and its boxes are filed as `[plan]` proposals once it does. Terms in bold at their first use here (**run**, **scope**, **card** and **Home channel**) are defined in the glossary in `docs/architecture.md`. A document's owning scope is what the glossary calls the owning channel, widened to cover a goal's scope too (see the last Open item).
 
 ## Problem
 
@@ -12,7 +12,7 @@ Some knowledge belongs to no single channel: the people in the user's life and w
 
 A reference document is an artifact (kind `document`, Markdown) with a new scope value, `reference`, so it appears in the gallery next to goal state documents and is never offered for deletion with a channel. Two tables sit beside it:
 
-- **`reference_documents`**: artifact id, a unique short name ("People"), the home scope (kind and id), an origin note, and the current version number. The origin note is text, such as "made in channel Family, 12 March", and is never consulted for a permission.
+- **`reference_documents`**: artifact id, a unique short name ("People"), the **owning scope** (kind and id), an origin note, and the current version number. The origin note is text, such as "made in channel Family, 12 March", and is never consulted for a permission.
 - **`document_versions`**: artifact id, version, full text, author (`user` or `agent`), the run that wrote it, the scope that run was in, whether the run was unvetted (below), who confirmed it, a note of what changed, and a timestamp. Append-only; restore writes an old version again as a new one. P4.4's PR (#88) adds `goal_states`, keyed by goal id with no scope, unvetted flag or confirmed-by columns. The implementation box for this note keeps two tables: it does not migrate `goal_states`, and shares only the restore and conflict code. The unvetted, scope and confirmation columns are meant for documents that other scopes can write to, which a goal's own state document is not.
 
 A document is capped at 20,000 tokens. Past that, the agent is told to split it ("People" into "People: family" and "People: work") rather than let it grow, so the part a run reads stays cheap.
@@ -31,8 +31,8 @@ Results go through the usual sizing and come back as tool-result data, like a fe
 `update_reference(name, edits, reason, initiated_by)` is a `local` tool taking the edit-list form the state document uses (each `old` matching once, applied together or not at all), plus `create_reference(name, text, reason)`. Whether either applies at once or shows a **card** is decided by `needsApproval`, the one function the tools note keeps for this:
 
 - `initiated_by` is `user_request` when the user's message asked for the change ("add Sam's birthday to People") and `agent_noticed` when the agent saw something worth keeping. The model sets it, so it is not trusted past what it can buy (below).
-- The call applies without a card only when all of these hold: it is `user_request`, the run's scope is the document's home, and the run is not unvetted. Anything else shows a card: "Save this to People?" with the exact diff, the reason, and where the text came from. Accept writes it as a version; decline drops it.
-- Creating a document always shows a card, and the channel it was proposed in becomes home on accept.
+- The call applies without a card only when all of these hold: it is `user_request`, the run's scope is the document's owning scope, and the run is not unvetted. Anything else shows a card: "Save this to People?" with the exact diff, the reason, and where the text came from. Accept writes it as a version; decline drops it.
+- Creating a document always shows a card, and the channel it was proposed in becomes the owning scope on accept.
 - Offers are limited so they do not nag: at most one `agent_noticed` card per run; none for a fact the document already holds; and a declined card's edit is remembered (a hash of the normalized text, per document), so the same fact is not offered again. The harness instructions say durable facts only: a person, a standing preference, a recurring topic; not a one-off.
 - The user's own edits in the UI are `user` versions and never ask.
 
@@ -40,11 +40,11 @@ A run is **unvetted** if either of two things is true. First, from the moment a 
 
 The cost is deliberate: after a fetch in a channel, direct writes there need a card for as long as the fetched text, or a summary or seed made from it, is in the context, which in a long channel with compaction can be a long time. The user sees a card with the diff, a click that is cheap beside the attack it stops.
 
-### Home and origin
+### Owning scope and origin
 
-Home starts as the scope of the run that made the document. It moves in two cases, both on a click the user already makes: accepting a switch from the landing channel (P3.8) or "New channel from here" (P3.11) moves the home of each document whose home was the source scope and that the carried runs read or proposed a change to, to the target channel; a document homed elsewhere that the conversation only read stays where it is, so a landing-channel chat that read People does not take direct writes away from the Family channel; and the user can move it by hand from the document's page. The landing channel therefore keeps no rights to a document the conversation has left. A move writes a version with the note "home moved from X to Y", so history shows it. The origin note does not change and gives no rights.
+The owning scope starts as the scope of the run that made the document. It moves in two cases, both on a click the user already makes: accepting a switch from the Home channel (P3.8) or "New channel from here" (P3.11) moves the owning scope of each document whose owning scope was the source scope and that the carried runs read or proposed a change to, to the target channel; a document owned elsewhere that the conversation only read stays where it is, so a Home-channel chat that read People does not take direct writes away from the Family channel; and the user can move it by hand from the document's page. The Home channel therefore keeps no rights to a document the conversation has left. A move writes a version with the note "owning scope moved from X to Y", so history shows it. The origin note does not change and gives no rights.
 
-A write from a scope that is not home always shows a card, which is why a move matters: the channel now working on a topic can update its documents directly, and every other channel has to ask.
+A write from a scope that is not the owning scope always shows a card, which is why a move matters: the channel now working on a topic can update its documents directly, and every other channel has to ask.
 
 ### Why the rules are shaped this way
 
@@ -52,7 +52,7 @@ The attack to stop is a fetched page, or a compromised model, planting or rewrit
 
 - An unvetted run never writes without a card, wherever it is and whatever the model claims about who asked. The flag follows the text into later runs through history, summaries, seeds and artifacts, so waiting one message does not clean a run. A page can say "add this to People", and the card still shows the diff and says the text came from a fetched page.
 - **A document's unvetted flag is derived from its versions.** The text a read returns is unvetted if it holds anything that came from an unvetted run, and the flag is sticky: a later clean write does not clear it, because the planted entry is still in the text. It clears only when the user, in the UI, edits or confirms the document (a `user` version after which the flagged text is theirs). Accepting a card writes the entry but does not clear the flag: the card approves a write, not the safety of the text for every later reader. The cost is that one accepted fetched-page entry makes every run that reads that document ask for cards until the user next confirms it in the UI, which is listed under Open for the user.
-- A model that lies with `user_request` gains only a direct write in a clean run at home, which is the channel the user is already in and the case where a lie costs least; every write is a version with its author, run and scope, so it can be seen and restored.
+- A model that lies with `user_request` gains only a direct write in a clean run at the owning scope, which is the channel the user is already in and the case where a lie costs least; every write is a version with its author, run and scope, so it can be seen and restored.
 - A write adds or replaces at most 2,000 characters, so a single call cannot rewrite a whole document.
 - Reads are data, framed as such, and a version written from an unvetted run carries that flag, so a later run that reads it is unvetted too and cannot turn it into a direct write elsewhere. The same holds for an artifact an unvetted run created.
 - Nothing in compaction writes a reference document. The summary may point at one by name.
@@ -62,22 +62,22 @@ The attack to stop is a fetched page, or a compromised model, planting or rewrit
 - Sending every document with every run. It spends the window on notes most runs do not need, and puts anything planted in one in front of the model in every channel.
 - One table row per fact. It gives structure, but the user edits prose, and the goal state document has already settled on Markdown with versions.
 - Embedding retrieval. It adds an index to keep in sync and a recall step the user cannot inspect; headings and a text search are inspectable.
-- Rights by origin. The landing channel reads the most untrusted text and would keep the right to rewrite everything it ever started.
-- Direct writes at home with no unvetted rule. A fetched page could then plant an entry in the channel where the user trusts the run most.
-- Cards for every write, home included. It makes "add Sam's birthday to People" a two-step chore for something the user just asked for.
+- Rights by origin. The Home channel reads the most untrusted text and would keep the right to rewrite everything it ever started.
+- Direct writes at the owning scope with no unvetted rule. A fetched page could then plant an entry in the channel where the user trusts the run most.
+- Cards for every write, the owning scope included. It makes "add Sam's birthday to People" a two-step chore for something the user just asked for.
 
 ## How evals will tell if it works
 
 - **Lookup** (scripted): a run where the user names a person reads the right section of a document too large to read whole, and pays for that section, not the document; a message that names nobody reads nothing.
 - **Offer** (scripted, then live): `agent_noticed` always produces a card with the diff; accept writes a version, decline writes nothing; the same declined fact is not offered again; a second offer in one run is refused. Live: in a chat where the user mentions a new colleague's role, the agent offers once, in a sensible form.
-- **Home** (scripted): a `user_request` write at home in a clean run applies without a card; the same call from another channel, and the same call after a `web_fetch` in the run, show a card; the landing-channel switch moves the home of documents homed in the source scope and not of others, including one the conversation only read; a moved home gives the old channel no direct writes.
-- **Unvetted** (scripted): an unvetted run's card is accepted (version 5), a clean `user_request` write at home follows (version 6), and a run in another channel that reads the document is unvetted and its writes show cards; after the user confirms the document in the UI, a read is clean again; a declined card leaves no version, so a later read is clean.
+- **Owning scope** (scripted): a `user_request` write at the owning scope in a clean run applies without a card; the same call from another channel, and the same call after a `web_fetch` in the run, show a card; the Home-channel switch moves the owning scope of documents owned by the source scope and not of others, including one the conversation only read; a moved owning scope gives the old channel no direct writes.
+- **Unvetted** (scripted): an unvetted run's card is accepted (version 5), a clean `user_request` write at the owning scope follows (version 6), and a run in another channel that reads the document is unvetted and its writes show cards; after the user confirms the document in the UI, a read is clean again; a declined card leaves no version, so a later read is clean.
 - **Injection** (scripted, then live): a fetched page tells the model to add or rewrite an entry; the run stops at a card marked as from a fetched page, and with a decline nothing changes. A page claiming to be the user cannot make `user_request` apply. A version written by an unvetted run makes a later run that reads it unvetted; so does an artifact created by an unvetted run. A fetch in run N followed by a direct-write attempt in run N+1, a later message with the page still in history, is refused with a card; the same after a compaction summary or a P3.11 seed built from run N. Live: the same against a real model, which must not obey and must not hide the attempt.
-- **Versions** (scripted): every write, restore and home move adds a version with author, run and scope; restore writes a new version; two concurrent edits follow the state document's conflict rule.
+- **Versions** (scripted): every write, restore and owning-scope move adds a version with author, run and scope; restore writes a new version; two concurrent edits follow the state document's conflict rule.
 - **Size** (scripted): a write over 2,000 characters and a document over its cap are refused with a message the model can act on.
 
 ## Open for the user
 
 - Whether the cost of the carried flag is acceptable: a document holding one accepted fetched-page entry makes its readers unvetted until the user confirms it, and a summary made from an unvetted run stays unvetted while carried forward, so a channel that fetched once keeps asking for cards. The alternative (clearing the flag when the user reads the summary and confirms) trades safety for fewer clicks.
-- Whether the rule for a direct write is too strict or too loose: it is the one place a click is skipped. The proposed rule (user-requested, at home, clean run) can be tightened to "always a card" with one change in `needsApproval` if the first weeks of use show a lie or a mistake.
-- Whether a document should ever be shared with a goal's runs by default. Proposed: yes, by the same tools and the same rules, with a goal's scope counting as its own home only for documents it made.
+- Whether the rule for a direct write is too strict or too loose: it is the one place a click is skipped. The proposed rule (user-requested, at the owning scope, clean run) can be tightened to "always a card" with one change in `needsApproval` if the first weeks of use show a lie or a mistake.
+- Whether a document should ever be shared with a goal's runs by default. Proposed: yes, by the same tools and the same rules, with a goal's scope counting as its own owning scope only for documents it made.
