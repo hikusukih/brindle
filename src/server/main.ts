@@ -10,6 +10,7 @@ import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { RunEngine } from "./runs.js";
+import { Scheduler } from "./scheduler.js";
 import { getSetting } from "./settings.js";
 import { getTimeZone } from "./time-zone.js";
 import { builtInTools } from "./tools/index.js";
@@ -65,11 +66,22 @@ const engine = new RunEngine(
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
+engine.watchWaiting();
+
+// Cron is read in the user's zone. Until the app is first opened there is none; UTC stands in, and the first
+// browser's zone moves every schedule through onTimeZoneChange below.
+const scheduler = new Scheduler(db, engine.schedulerHooks(), { timeZone: getTimeZone(db) ?? "UTC" });
+// After the engine's recovery, so a run it marks as interrupted is told apart from one that never began.
+const failedToStart = scheduler.recover();
+if (failedToStart > 0) console.log(`Recorded ${failedToStart} scheduled run(s) that never began as failed to start.`);
+scheduler.start();
 const app = createApp({
   db,
   engine,
   models,
   artifacts,
+  scheduler,
+  onTimeZoneChange: (timeZone) => scheduler.setTimeZone(timeZone),
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,
 });
