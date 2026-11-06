@@ -28,6 +28,7 @@ import {
   editGoal,
   GoalError,
   getGoal,
+  goalIdsByChannel,
   listGoals,
   refuseGoalChannel,
   restoreBrief,
@@ -180,7 +181,11 @@ export function createApp({
     return (body as { name?: unknown }).name;
   };
 
-  app.get("/api/channels", (c) => c.json(listChannels(db, { archived: c.req.query("archived") === "true" })));
+  app.get("/api/channels", (c) => {
+    const owners = goalIdsByChannel(db);
+    const list = listChannels(db, { archived: c.req.query("archived") === "true" });
+    return c.json(list.map((ch) => ({ ...ch, goalId: owners.get(ch.id) ?? null })));
+  });
   app.post("/api/channels", async (c) => c.json(createChannel(db, await nameFrom(c)), 201));
   app.patch("/api/channels/:id", async (c) => {
     refuseGoalChannel(db, c.req.param("id"));
@@ -282,9 +287,17 @@ export function createApp({
     return c.json(archiveGoal(db, id, new Date(), scheduler));
   });
   app.post("/api/goals/:id/restore", (c) => c.json(restoreGoal(db, c.req.param("id"), new Date(), scheduler)));
+  // The body may list artifact ids to delete with the goal's channel, as for a channel; with none, every artifact is kept.
   app.delete("/api/goals/:id", async (c) => {
     const id = c.req.param("id");
+    const goal = getGoal(db, id);
+    const body = (await c.req.json().catch(() => null)) as { deleteArtifacts?: unknown } | null;
+    const ids = body?.deleteArtifacts;
+    if (ids !== undefined && (!Array.isArray(ids) || ids.some((x) => typeof x !== "string"))) {
+      throw new HTTPException(400, { message: "deleteArtifacts is a list of artifact ids." });
+    }
     if (engine) await cancelGoalRuns(db, engine, id);
+    if (ids?.length) artifacts?.deleteForChannel(goal.channelId, ids as string[]);
     deleteGoal(db, id, scheduler);
     return c.body(null, 204);
   });
