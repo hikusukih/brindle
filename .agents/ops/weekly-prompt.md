@@ -1,6 +1,6 @@
 # Weekly prompt
 
-The stored prompt for the **brindle weekly** scheduled task, as installed. It runs every day, after the daily box and the review task's daily run, on Opus. It replaces the planning task. Replace PAGE_URL with the weekly page's claude.ai link, which the repo doesn't record. Paste everything below the rule into the task; keep the text free of angle brackets, which the task editor strips.
+The stored prompt for the **brindle weekly** scheduled task, as installed. It runs every day, after the daily box and the review task's daily run, on Opus. It replaces the planning task. Replace PAGE_URL with the weekly page's claude.ai link, which the repo doesn't record. The page's own code is `weekly-page.html` beside this file; republish it to the same link if the page breaks (it declares the `db` capability with one rule, read view and write owner, and the `user` capability). Paste everything below the rule into the task; keep the text free of angle brackets, which the task editor strips.
 
 ---
 
