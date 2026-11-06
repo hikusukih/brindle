@@ -5,12 +5,15 @@ import { serve } from "@hono/node-server";
 import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
+import { getChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
+import { PurposeDrafter } from "./purpose.js";
 import { RunEngine } from "./runs.js";
 import { getSetting } from "./settings.js";
+import { getTimeZone } from "./time-zone.js";
 import { builtInTools } from "./tools/index.js";
 
 applyLegacyEnv(process.env);
@@ -64,6 +67,18 @@ const engine = new RunEngine(
   tools,
   { utilityModel: (spec) => (utilitySpec ? models.resolve(utilitySpec) : models.resolveForChannel(spec)) },
 );
+// Drafting purpose statements uses the same utility model, else the channel's own.
+if (utilitySpec) models.validate(utilitySpec);
+const purpose = new PurposeDrafter(db, (channelId) => {
+  const spec = utilitySpec ?? getChannel(db, channelId).model;
+  return {
+    model: models.resolveForChannel(spec),
+    // 10 minutes, the default of docs/design/context.md; P2.11's per-model setting replaces it.
+    millis: 10 * 60_000,
+  };
+});
+engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
+engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
 const app = createApp({
@@ -71,6 +86,7 @@ const app = createApp({
   engine,
   models,
   artifacts,
+  purpose,
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,
 });
