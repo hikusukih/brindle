@@ -1,0 +1,239 @@
+<title>Brindle Weekly</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
+<style>
+/* Layout: one column read top to bottom, in the order to spend your time. Warm = needs you; green = answered. */
+:root {
+  --bg: #f5f6f4; --surface: #ffffff; --fg: #1c211f; --muted: #5b625e; --rule: #d9ddd9;
+  --you: #b4441c; --you-soft: #f8e1d7; --ok: #2f7a4f; --ok-soft: #dcefe2; --link: #2f5f9e;
+  /* Complement of the rust accent (16deg -> 196deg): the "look elsewhere" action. */
+  --info: #1d6f87;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Public Sans", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #151917; --surface: #1d2220; --fg: #e6e9e6; --muted: #9aa29d; --rule: #323936;
+    --you: #ee8a62; --you-soft: #3a2219; --ok: #7fcf9b; --ok-soft: #1f3327; --link: #7fa8e0; --info: #6cc5dc; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #151917; --surface: #1d2220; --fg: #e6e9e6; --muted: #9aa29d; --rule: #323936;
+  --you: #ee8a62; --you-soft: #3a2219; --ok: #7fcf9b; --ok-soft: #1f3327; --link: #7fa8e0; --info: #6cc5dc; color-scheme: dark;
+}
+body { background: var(--bg); color: var(--fg); font-family: var(--body); font-size: 16px; line-height: 1.55;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); padding-block: 32px 80px; }
+main { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+h1, h2 { font-family: var(--display); font-weight: 650; line-height: 1.2; margin: 0; text-wrap: balance; }
+h1 { font-size: 2.2rem; }
+h2 { font-size: 1.35rem; }
+p { margin: 0; }
+a { color: var(--link); }
+:focus-visible { outline: 2px solid var(--link); outline-offset: 2px; }
+.eyebrow { font-family: var(--mono); font-size: 0.75rem; letter-spacing: 0.08em; text-transform: uppercase; color: var(--muted); }
+header { display: flex; flex-direction: column; gap: 12px; }
+.progress { display: flex; align-items: center; gap: 12px; font-family: var(--mono); font-size: 0.85rem; color: var(--muted); }
+.bar { flex: 1; height: 6px; background: var(--rule); border-radius: 3px; overflow: hidden; }
+.bar i { display: block; height: 100%; background: var(--ok); width: 0; transition: width .3s; }
+.status { font-size: 0.9rem; color: var(--muted); }
+section { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+.sec-head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 8px; }
+.why { color: var(--muted); font-size: 0.93rem; }
+.count { font-family: var(--mono); font-size: 0.85rem; color: var(--you); }
+.count.done { color: var(--ok); }
+ul.items { list-style: none; margin: 0; padding: 0; border-top: 1px solid var(--rule); }
+li.item { padding: 14px 0; border-bottom: 1px solid var(--rule); display: flex; flex-direction: column; gap: 6px; }
+.item .t { font-weight: 600; }
+.item .t a { font-family: var(--mono); font-size: 0.8rem; font-weight: 500; margin-right: 6px; }
+.item .n { color: var(--muted); font-size: 0.93rem; }
+.item .rec { font-size: 0.93rem; border-left: 3px solid var(--rule); padding-left: 10px; }
+.item .rec b { font-family: var(--mono); font-size: 0.72rem; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); font-weight: 500; margin-right: 4px; }
+.acts { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+button { font: inherit; font-size: 0.88rem; min-height: 36px; padding: 0 12px; border-radius: 6px; border: 1px solid var(--rule); background: var(--surface); color: var(--fg); cursor: pointer; }
+button:hover { border-color: var(--muted); }
+button.primary { border-color: var(--you); color: var(--you); font-weight: 600; }
+button.info { border-color: var(--info); color: var(--info); font-weight: 600; }
+button:disabled { opacity: .5; cursor: default; }
+.chip { display: inline-flex; align-items: center; gap: 6px; font-size: 0.85rem; background: var(--ok-soft); color: var(--ok); border-radius: 999px; padding: 3px 10px; font-weight: 600; }
+.chip.applied { background: transparent; border: 1px solid var(--ok); }
+.answer-text { font-size: 0.9rem; color: var(--fg); white-space: pre-wrap; }
+textarea { font: inherit; font-size: 0.93rem; width: 100%; box-sizing: border-box; min-height: 72px; padding: 8px; border-radius: 6px; border: 1px solid var(--rule); background: var(--bg); color: var(--fg); }
+.quiet li.item { padding: 8px 0; }
+details > summary { cursor: pointer; list-style: none; }
+details > summary::-webkit-details-marker { display: none; }
+details > summary h2::after { content: " +"; color: var(--muted); font-family: var(--mono); font-size: 0.9rem; }
+details[open] > summary h2::after { content: " −"; }
+.built { margin: 0; padding-left: 1.2em; columns: 2 240px; column-gap: 24px; font-size: 0.93rem; }
+.how { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; font-size: 0.93rem; display: flex; flex-direction: column; gap: 6px; }
+.empty { color: var(--muted); }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
+</style>
+
+<main>
+  <header>
+    <div class="eyebrow" id="stamp">Brindle · loading</div>
+    <h1>Brindle Weekly</h1>
+    <p id="summary" class="empty">Loading this week's list…</p>
+    <div class="progress" aria-live="polite"><span id="prog">0 of 0 answered</span><div class="bar"><i id="barfill"></i></div></div>
+    <p class="status" id="status" hidden></p>
+  </header>
+  <div id="sections"></div>
+  <section aria-labelledby="h-built">
+    <details>
+      <summary><h2 id="h-built">Built this week</h2></summary>
+      <ul class="built" id="built"></ul>
+    </details>
+  </section>
+  <div class="how">
+    <strong>How this page works</strong>
+    <span>The weekly session rebuilds this list from GitHub once a day (it's called weekly so it never feels urgent). Your taps are saved right away. Its next run acts on them: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items then drop off.</span>
+  </div>
+</main>
+
+<script>
+(async () => {
+  const $ = (id) => document.getElementById(id);
+  const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish", ack: "Ack", file: "File it anyway" };
+  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments", ack: "Acked", file: "Will be filed" };
+  const TIPS = {
+    approve: "Approve. The weekly session merges it on its next daily run, unless new commits land after you tap.",
+    changes: "Ask for changes. Type what you want; it goes on the PR as a comment and blocks merging until it's fixed.",
+    comments: "You left comments on GitHub. The weekly session collects them as changes to make, and merging waits until they're fixed.",
+    later: "Snooze. Hides this until 6 AM your time.",
+    accept: "Take the recommendation. The weekly session records it as your decision.",
+    answer: "Answer in your own words. The weekly session records them as your decision.",
+    close: "Close the PR without merging it.",
+    keep: "Keep it open. Nothing happens.",
+    ack: "I agree with the drop. The idea stays dropped.",
+    file: "Overrule the drop. The weekly session files it as a plan PR, even over the cap.",
+  };
+  const TEXT_ACTIONS = new Set(["changes", "answer"]);
+  let weekly = null, answers = {}, db = null, canWrite = false, open = null;
+
+  function setStatus(msg) { const s = $("status"); s.textContent = msg || ""; s.hidden = !msg; }
+
+  function el(tag, attrs, ...kids) {
+    const e = document.createElement(tag);
+    for (const [k, v] of Object.entries(attrs || {})) {
+      if (k === "class") e.className = v; else if (k.startsWith("on")) e.addEventListener(k.slice(2), v); else e.setAttribute(k, v);
+    }
+    for (const k of kids) if (k != null) e.append(k);
+    return e;
+  }
+
+  // The weekly task writes its own time zone into the list, so the repo never records it.
+  const zone = () => weekly?.timeZone || "UTC";
+  function wallClock(t, tz) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(t).map((x) => [x.type, Number(x.value)]));
+    return { p, offset: Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(t.getTime() / 60000) * 60000 };
+  }
+  // The next 6:00 in the task's zone. The offset is read again at 6:00 itself, so a daylight-saving change overnight lands on 6, not 5 or 7.
+  function nextSixAM() {
+    const tz = zone();
+    const { p, offset } = wallClock(new Date(), tz);
+    const local = Date.UTC(p.year, p.month - 1, p.hour < 6 ? p.day : p.day + 1, 6, 0);
+    const guess = new Date(local - offset);
+    return new Date(local - wallClock(guess, tz).offset).toISOString();
+  }
+  // A snooze that has run out counts as no answer, so the item's buttons come back, whatever the weekly session wrote on it.
+  const live = (a) => a && !(a.choice === "later" && !(a.until && a.until > new Date().toISOString()));
+
+  async function save(key, choice, text) {
+    if (!db || !canWrite) return;
+    const body = { choice, at: new Date().toISOString() };
+    if (choice === "later") body.until = nextSixAM();
+    if (text) body.text = text;
+    try { await db.collection("answers").doc(key).set(body); setStatus(""); }
+    catch (e) { setStatus(e && e.code === "invalid_argument" ? "Only the page's owner can answer here." : "Couldn't save that. Try again in a moment."); }
+  }
+  async function undo(key) {
+    if (!db || !canWrite) return;
+    try { await db.collection("answers").doc(key).delete(); } catch { setStatus("Couldn't undo that. Try again in a moment."); }
+  }
+
+  function renderItem(sec, item) {
+    const a = live(answers[item.key]) ? answers[item.key] : null;
+    const title = el("div", { class: "t" }, item.pr ? el("a", { href: item.url, target: "_blank", rel: "noopener" }, "#" + item.pr) : null, item.title);
+    const li = el("li", { class: "item" }, title);
+    if (item.note) li.append(el("div", { class: "n" }, item.note));
+    if (item.rec) li.append(el("div", { class: "rec" }, el("b", {}, "Recommend"), item.rec));
+    if (item.dropped) li.append(el("div", { class: "rec" }, "(dropped: " + item.dropped + ")"));
+    if (!sec.actions.length) return li;
+    const acts = el("div", { class: "acts" });
+    if (a) {
+      const chip = el("span", { class: "chip" + (a.applied ? " applied" : "") }, a.applied ? "Done: " + a.applied : (DONE_LABELS[a.choice] || a.choice));
+      acts.append(chip);
+      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the weekly session acts on it.", onclick: () => undo(item.key) }, "Undo"));
+      li.append(acts);
+      if (a.text) li.append(el("div", { class: "answer-text" }, "“" + a.text + "”"));
+      return li;
+    }
+    if (open === item.key) {
+      const ta = el("textarea", { id: "ta-" + item.key, "aria-label": "Your answer for " + item.title, placeholder: "Your answer, in a sentence or two" });
+      const choice = sec.actions.find((x) => TEXT_ACTIONS.has(x));
+      li.append(ta);
+      acts.append(el("button", { class: "primary", title: "Save your answer.", onclick: () => { const v = ta.value.trim(); if (v) { open = null; save(item.key, choice, v); } } }, "Save"),
+                  el("button", { title: "Close the box without saving.", onclick: () => { open = null; render(); } }, "Cancel"));
+      li.append(acts);
+      setTimeout(() => ta.focus(), 0);
+      return li;
+    }
+    sec.actions.forEach((act, i) => {
+      const b = el("button", { class: i === 0 ? "primary" : act === "comments" ? "info" : "", title: TIPS[act] || "", onclick: () => { if (TEXT_ACTIONS.has(act)) { open = item.key; render(); } else save(item.key, act); } }, LABELS[act] || act);
+      if (!canWrite) b.disabled = true;
+      acts.append(b);
+    });
+    li.append(acts);
+    return li;
+  }
+
+  function render() {
+    if (!weekly) return;
+    $("stamp").textContent = "Updated " + weekly.generated + " · covering " + weekly.window;
+    $("summary").textContent = weekly.summary; $("summary").className = "";
+    const built = $("built"); built.replaceChildren(...(weekly.built || []).map((b) => el("li", {}, b)));
+    const host = $("sections"); host.replaceChildren();
+    let total = 0, answered = 0;
+    const wrap = el("div", { style: "display:flex;flex-direction:column;gap:40px" });
+    for (const sec of weekly.sections) {
+      const actionable = sec.actions.length > 0;
+      const n = sec.items.length, done = sec.items.filter((i) => live(answers[i.key])).length;
+      if (actionable) { total += n; answered += done; }
+      const head = el("div", { class: "sec-head" }, el("h2", { id: "h-" + sec.id }, sec.title),
+        actionable ? el("span", { class: "count" + (done === n ? " done" : "") }, done + " of " + n) : el("span", { class: "count done" }, n + ""));
+      const s = el("section", { "aria-labelledby": "h-" + sec.id, class: actionable ? "" : "quiet" }, head, el("p", { class: "why" }, sec.why));
+      if (sec.batch && canWrite && done < n) {
+        s.append(el("div", { class: "acts" }, el("button", { class: "primary", title: "Gives every unanswered item in this section the same answer. " + (TIPS[sec.batch] || ""), onclick: async () => {
+          for (const it of sec.items) if (!live(answers[it.key])) await save(it.key, sec.batch);
+        } }, (LABELS[sec.batch] || sec.batch) + " all " + (n - done) + " remaining")));
+      }
+      s.append(el("ul", { class: "items" }, ...sec.items.map((it) => renderItem(sec, it))));
+      wrap.append(s);
+    }
+    host.append(wrap);
+    $("prog").textContent = answered + " of " + total + " answered";
+    $("barfill").style.width = total ? (100 * answered / total) + "%" : "0";
+  }
+
+  // Coming back to the tab after 6 AM shows snoozed items again without a reload.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
+  const timer = setTimeout(() => { if (!weekly) setStatus("The list can't be reached yet. It will appear when the connection comes back."); }, 10000);
+  db = await claude.use("db");
+  if (!db) { clearTimeout(timer); $("summary").textContent = "This view can't load the list. Open the page while signed in to claude.ai."; return; }
+  const user = await claude.use("user");
+  canWrite = user ? (user.isOwner ? await user.isOwner() : false) : false;
+  db.doc("weekly/current").onSnapshot((snap) => {
+    if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
+    weekly = snap.exists ? snap.data() : null;
+    if (!weekly) { $("summary").textContent = "No list yet. The weekly session writes the first one."; return; }
+    render();
+  }, () => { clearTimeout(timer); setStatus("The list stopped updating. Reload the page to try again."); });
+  db.collection("answers").onSnapshot((snap) => {
+    const next = {}; for (const d of snap.docs) next[d.id] = d.data();
+    answers = next; render();
+  }, () => setStatus("Your answers stopped updating. Reload the page to try again."));
+})();
+</script>
