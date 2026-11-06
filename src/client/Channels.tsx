@@ -8,7 +8,9 @@ import {
   type Run,
   type RunEvent,
 } from "./api";
+import { DeleteChoice } from "./DeleteChoice";
 import { AuthedEventSource } from "./events";
+import { GoalBrief } from "./GoalBrief";
 import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -44,12 +46,7 @@ function ChannelList() {
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const [deleting, setDeleting] = useState<{
-    channel: Channel;
-    artifacts: Artifact[];
-    choice: "keep" | "all" | "some";
-    picked: string[];
-  } | null>(null);
+  const [deleting, setDeleting] = useState<{ channel: Channel; artifacts: Artifact[] } | null>(null);
 
   const load = useCallback(() => {
     api<Channel[]>(`/api/channels?archived=${showArchived}`)
@@ -76,7 +73,7 @@ function ChannelList() {
   const askDelete = async (c: Channel) => {
     try {
       const made = await api<Artifact[]>(`/api/channels/${c.id}/artifacts`);
-      if (made.length) setDeleting({ channel: c, artifacts: made, choice: "keep", picked: [] });
+      if (made.length) setDeleting({ channel: c, artifacts: made });
       else if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
         await act(`/api/channels/${c.id}`, "DELETE");
     } catch (e) {
@@ -84,10 +81,9 @@ function ChannelList() {
     }
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (ids: string[]) => {
     if (!deleting) return;
-    const { channel, artifacts, choice, picked } = deleting;
-    const ids = choice === "all" ? artifacts.map((a) => a.id) : choice === "some" ? picked : [];
+    const { channel } = deleting;
     setDeleting(null);
     await act(`/api/channels/${channel.id}`, "DELETE", ids.length ? { deleteArtifacts: ids } : undefined);
   };
@@ -121,60 +117,14 @@ function ChannelList() {
       </form>
       <Problem message={problem} />
       {deleting && (
-        <section aria-label="Delete channel" className="flex flex-col gap-2 rounded-lg border border-red-200 p-3">
-          <h2 className="font-medium">
-            Delete "{deleting.channel.name}" and its history? It made {deleting.artifacts.length}{" "}
-            {deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.
-          </h2>
-          {(
-            [
-              ["keep", "Keep all artifacts"],
-              ["all", "Delete all artifacts"],
-              ["some", "Choose which to delete"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className="flex min-h-11 items-center gap-2">
-              <input
-                type="radio"
-                name="artifact-choice"
-                checked={deleting.choice === value}
-                onChange={() => setDeleting({ ...deleting, choice: value })}
-              />
-              {label}
-            </label>
-          ))}
-          {deleting.choice === "some" && (
-            <ul className="flex flex-col">
-              {deleting.artifacts.map((a) => (
-                <li key={a.id}>
-                  <label className="flex min-h-11 items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={deleting.picked.includes(a.id)}
-                      onChange={(e) =>
-                        setDeleting({
-                          ...deleting,
-                          picked: e.target.checked
-                            ? [...deleting.picked, a.id]
-                            : deleting.picked.filter((x) => x !== a.id),
-                        })
-                      }
-                    />
-                    {a.title}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex gap-2">
-            <button type="button" className={`${quiet} text-red-700`} onClick={() => void confirmDelete()}>
-              Delete channel
-            </button>
-            <button type="button" className={quiet} onClick={() => setDeleting(null)}>
-              Cancel
-            </button>
-          </div>
-        </section>
+        <DeleteChoice
+          label="Delete channel"
+          heading={`Delete "${deleting.channel.name}" and its history? It made ${deleting.artifacts.length} ${deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.`}
+          confirmLabel="Delete channel"
+          artifacts={deleting.artifacts}
+          onConfirm={(ids) => void confirmDelete(ids)}
+          onCancel={() => setDeleting(null)}
+        />
       )}
       <div className="flex gap-2">
         <button type="button" className={quiet} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
@@ -223,25 +173,33 @@ function ChannelList() {
                 {c.name}
               </a>
             )}
-            <div className="flex flex-wrap gap-2">
-              {c.archivedAt ? (
-                <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
-                  Restore
+            {c.goalId ? (
+              <p className="text-sm text-slate-600">A goal's channel. Open it to see or delete the goal.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {c.archivedAt ? (
+                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className={quiet}
+                      onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}
+                    >
+                      Archive
+                    </button>
+                  </>
+                )}
+                <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
+                  Delete
                 </button>
-              ) : (
-                <>
-                  <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
-                    Rename
-                  </button>
-                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}>
-                    Archive
-                  </button>
-                </>
-              )}
-              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
-                Delete
-              </button>
-            </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -611,6 +569,7 @@ function ChannelView({ id }: { id: string }) {
         ← All channels
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
+      {channel?.goalId && <GoalBrief goalId={channel.goalId} channelId={channel.id} />}
       {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
