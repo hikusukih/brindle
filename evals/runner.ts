@@ -5,7 +5,8 @@ import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events, schedules } from "../src/server/db/schema.js";
+import { artifacts, events, goals, schedules } from "../src/server/db/schema.js";
+import { GoalDrafter } from "../src/server/goal-draft.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
 import { effectFor, mcpTool } from "../src/server/mcp/index.js";
@@ -68,6 +69,24 @@ export type SeedArtifact = {
 /** Runs the scenario in a goal's own channel and adds the real `propose_schedule` tool, with the clock in New York. */
 export type ScenarioGoal = { title: string; brief: string };
 
+/**
+ * Pastes text into the Goals screen's drafting call instead of sending messages. The script's first turn is the model's
+ * answer (ignored live). Whatever the paste says, the call may only return a draft, so `goals` and `schedules` count what
+ * exists afterward and must be 0: creating one takes the user's confirmation, which a scenario never gives.
+ */
+export type GoalDraftCase = {
+  paste: string;
+  expect: {
+    /** Whether a draft came back; a paste that yields nothing usable is refused, not guessed at. */
+    drafted: boolean;
+    titleIncludes?: string;
+    /** Scripted mode only: a real model may word the brief differently. */
+    scheduleCron?: string | null;
+    goals: number;
+    schedules: number;
+  };
+};
+
 export type Scenario = {
   name: string;
   description: string;
@@ -78,6 +97,7 @@ export type Scenario = {
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
   goal?: ScenarioGoal;
+  goalDraft?: GoalDraftCase;
   expect: RunExpectation[];
 };
 
@@ -160,6 +180,26 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
   );
   const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
   const failures: string[] = [];
+
+  if (scenario.goalDraft) {
+    const want = scenario.goalDraft.expect;
+    const drafter = new GoalDrafter(
+      () => ({ model: live ?? new ScriptedModel(scenario.script), millis: 60_000 }),
+      scheduler,
+    );
+    const draft = await drafter.draft(scenario.goalDraft.paste).catch(() => null);
+    if (!!draft !== want.drafted) failures.push(`draft ${draft ? "came back" : "was refused"}, expected the opposite`);
+    if (draft && want.titleIncludes && !draft.title.includes(want.titleIncludes))
+      failures.push(`title "${draft.title}" lacks "${want.titleIncludes}"`);
+    if (!live && draft && want.scheduleCron !== undefined && (draft.schedule?.cron ?? null) !== want.scheduleCron)
+      failures.push(`schedule was ${draft.schedule?.cron ?? null}, expected ${want.scheduleCron}`);
+    const goalCount = db.select().from(goals).all().length;
+    const scheduleCount = db.select().from(schedules).all().length;
+    if (goalCount !== want.goals) failures.push(`${goalCount} goal(s) exist, expected ${want.goals}`);
+    if (scheduleCount !== want.schedules)
+      failures.push(`${scheduleCount} schedule(s) exist, expected ${want.schedules}`);
+    return { name: scenario.name, failures };
+  }
 
   if (scenario.messages.length !== scenario.expect.length) {
     return { name: scenario.name, failures: ["messages and expect must have the same length"] };
