@@ -378,6 +378,44 @@ describe("channel view", () => {
     expect(calls).toContain("POST /api/channels/c1/model");
   });
 
+  it("shows the purpose statement as a draft, lets the user edit it, and drafts on request", async () => {
+    window.location.hash = "#/channels/c1";
+    let current: { text: string; author: string; confirmed: boolean; version: number } | null = {
+      text: "Planning a trip.",
+      author: "agent",
+      confirmed: false,
+      version: 1,
+    };
+    const calls = stubFetch({
+      "/api/models": () => Response.json(twoModels),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/purpose": (method, body) => {
+        if (method === "PUT") {
+          current = { text: (body as { text: string }).text, author: "user", confirmed: true, version: 2 };
+        }
+        return Response.json({ current, versions: [] });
+      },
+      "/api/channels/c1/purpose/draft": () => {
+        current = { text: "A fresh draft.", author: "agent", confirmed: false, version: 3 };
+        return Response.json({ current, versions: [] });
+      },
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText("Planning a trip.")).toBeTruthy();
+    expect(screen.getByText("draft")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit purpose" }));
+    fireEvent.change(screen.getByLabelText("Purpose statement"), { target: { value: "Lisbon in May." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save purpose" }));
+    expect(await screen.findByText("Lisbon in May.")).toBeTruthy();
+    expect(screen.queryByText("draft")).toBeNull();
+    expect(calls).toContain("PUT /api/channels/c1/purpose");
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft one" }));
+    expect(await screen.findByText("A fresh draft.")).toBeTruthy();
+  });
+
   it("scrolls to and highlights the run named in the address, and only that one", async () => {
     window.location.hash = "#/channels/c1/runs/r2";
     const scrolled: string[] = [];

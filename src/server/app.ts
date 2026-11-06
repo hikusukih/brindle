@@ -35,9 +35,16 @@ import {
   restoreGoal,
 } from "./goals.js";
 import type { ModelRegistry } from "./model/config.js";
+import type { PurposeDrafter } from "./purpose.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
-import { ScopeStatementError } from "./scope-statements.js";
+import {
+  currentStatement,
+  restoreStatement,
+  ScopeStatementError,
+  statementVersions,
+  writeStatement,
+} from "./scope-statements.js";
 import { setSetting } from "./settings.js";
 import { getTimeZone, setTimeZone, TimeZoneError } from "./time-zone.js";
 
@@ -52,6 +59,8 @@ type AppOptions = {
   engine?: RunEngine;
   // What channels may be set to use; absent, setting a channel's model is refused.
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
+  // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
+  purpose?: PurposeDrafter;
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
@@ -69,6 +78,7 @@ export function createApp({
   engine,
   models,
   artifacts,
+  purpose,
   scheduler,
   onTimeZoneChange,
   clientRoot,
@@ -221,6 +231,38 @@ export function createApp({
   app.post("/api/channels/:id/restore", (c) => {
     refuseGoalChannel(db, c.req.param("id"));
     return c.json(restoreChannel(db, c.req.param("id")));
+  });
+  // A channel's purpose statement. A goal's channel has its brief instead, edited through the goal.
+  const purposeOf = (id: string) => {
+    getChannel(db, id);
+    refuseGoalChannel(db, id);
+    return { current: currentStatement(db, "channel", id) ?? null, versions: statementVersions(db, "channel", id) };
+  };
+  app.get("/api/channels/:id/purpose", (c) => c.json(purposeOf(c.req.param("id"))));
+  app.put("/api/channels/:id/purpose", async (c) => {
+    const id = c.req.param("id");
+    purposeOf(id);
+    const { text } = (await c.req.json().catch(() => ({}))) as { text?: unknown };
+    if (typeof text !== "string") throw new HTTPException(400, { message: "text must be a string." });
+    writeStatement(db, { scopeKind: "channel", scopeId: id, text, author: "user", confirmed: true });
+    return c.json(purposeOf(id));
+  });
+  app.post("/api/channels/:id/purpose/draft", async (c) => {
+    const id = c.req.param("id");
+    purposeOf(id);
+    if (!purpose) throw new HTTPException(503, { message: "No model is configured to draft with." });
+    try {
+      await purpose.draft(id);
+    } catch (error) {
+      throw new HTTPException(409, { message: `Couldn't draft one: ${(error as Error).message}` });
+    }
+    return c.json(purposeOf(id));
+  });
+  app.post("/api/channels/:id/purpose/versions/:version/restore", (c) => {
+    const id = c.req.param("id");
+    purposeOf(id);
+    restoreStatement(db, "channel", id, Number(c.req.param("version")));
+    return c.json(purposeOf(id));
   });
   app.get("/api/artifacts", (c) => {
     const kind = c.req.query("kind");

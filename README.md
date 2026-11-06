@@ -58,6 +58,10 @@ OPENAI_API_KEY=... BRINDLE_MODEL=openai:<model> npm start
 
 Each channel shows the model it uses under its name, and a channel can be set to a different one with the same `provider:name` spelling; clearing the field returns it to the default. A model whose key is missing is refused when you set it. With no default and no choice on the channel, sending a message answers 503.
 
+### Purpose statements
+
+After a channel's third finished run, one housekeeping call drafts a sentence or two on what the channel is for. It is shown under the channel name as a draft, and the user can edit it in place or ask for a new draft; text the user wrote is never replaced by a draft. It is sent with every run in that channel. Housekeeping calls use the channel's own model unless `BRINDLE_UTILITY_MODEL` names another (same `provider:name` spelling), such as a cheaper one.
+
 ### Trying runs with the scripted model
 
 For development and acceptance without a key, set `BRINDLE_MODEL=scripted` and `BRINDLE_SCRIPTED_FIXTURE` to a JSON file of canned turns.
