@@ -95,7 +95,7 @@ details[open] > summary h2::after { content: " −"; }
 <script>
 (async () => {
   const $ = (id) => document.getElementById(id);
-  const LABELS = { approve: "Approve", changes: "Ask for changes...", later: "Snooze till 6 AM", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Check my comments" };
+  const LABELS = { approve: "Approve", changes: "I'mna need...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish" };
   const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
