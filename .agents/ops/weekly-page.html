@@ -88,7 +88,7 @@ details[open] > summary h2::after { content: " −"; }
   </section>
   <div class="how">
     <strong>How this page works</strong>
-    <span>A daily session rebuilds this list from GitHub (it's called weekly so it never feels urgent). Your taps are saved right away. The next daily run acts on them: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items then drop off.</span>
+    <span>The weekly session rebuilds this list from GitHub once a day (it's called weekly so it never feels urgent). Your taps are saved right away. Its next run acts on them: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items then drop off.</span>
   </div>
 </main>
 
@@ -166,7 +166,7 @@ details[open] > summary h2::after { content: " −"; }
     if (a) {
       const chip = el("span", { class: "chip" + (a.applied ? " applied" : "") }, a.applied ? "Done: " + a.applied : (DONE_LABELS[a.choice] || a.choice));
       acts.append(chip);
-      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the daily session acts on it.", onclick: () => undo(item.key) }, "Undo"));
+      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the weekly session acts on it.", onclick: () => undo(item.key) }, "Undo"));
       li.append(acts);
       if (a.text) li.append(el("div", { class: "answer-text" }, "“" + a.text + "”"));
       return li;
@@ -228,7 +228,7 @@ details[open] > summary h2::after { content: " −"; }
   db.doc("weekly/current").onSnapshot((snap) => {
     if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
     weekly = snap.exists ? snap.data() : null;
-    if (!weekly) { $("summary").textContent = "No list yet. The daily session writes the first one."; return; }
+    if (!weekly) { $("summary").textContent = "No list yet. The weekly session writes the first one."; return; }
     render();
   }, () => { clearTimeout(timer); setStatus("The list stopped updating. Reload the page to try again."); });
   db.collection("answers").onSnapshot((snap) => {
