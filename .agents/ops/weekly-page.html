@@ -98,16 +98,16 @@ details[open] > summary h2::after { content: " −"; }
   const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish", ack: "Ack", file: "File it anyway" };
   const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments", ack: "Acked", file: "Will be filed" };
   const TIPS = {
-    approve: "Approve. The daily session merges it, unless new commits land after you tap.",
+    approve: "Approve. The weekly session merges it on its next daily run, unless new commits land after you tap.",
     changes: "Ask for changes. Type what you want; it goes on the PR as a comment and blocks merging until it's fixed.",
-    comments: "You left comments on GitHub. The daily session collects them as changes to make, and merging waits until they're fixed.",
-    later: "Snooze. Hides this until 6 AM New York time.",
-    accept: "Take the recommendation. The daily session records it as your decision.",
-    answer: "Answer in your own words. The daily session records them as your decision.",
+    comments: "You left comments on GitHub. The weekly session collects them as changes to make, and merging waits until they're fixed.",
+    later: "Snooze. Hides this until 6 AM your time.",
+    accept: "Take the recommendation. The weekly session records it as your decision.",
+    answer: "Answer in your own words. The weekly session records them as your decision.",
     close: "Close the PR without merging it.",
     keep: "Keep it open. Nothing happens.",
     ack: "I agree with the drop. The idea stays dropped.",
-    file: "Overrule the drop. The daily session files it as a plan PR, even over the cap.",
+    file: "Overrule the drop. The weekly session files it as a plan PR, even over the cap.",
   };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
@@ -123,17 +123,23 @@ details[open] > summary h2::after { content: " −"; }
     return e;
   }
 
-  // The next 6:00 in New York, as an ISO time. The offset is read from Intl so daylight saving is handled.
-  function nextSixAM() {
-    const now = new Date();
-    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-      .formatToParts(now).map((x) => [x.type, Number(x.value)]));
-    const offset = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(now.getTime() / 60000) * 60000;
-    const day = p.hour < 6 ? p.day : p.day + 1;
-    return new Date(Date.UTC(p.year, p.month - 1, day, 6, 0) - offset).toISOString();
+  // The weekly task writes its own time zone into the list, so the repo never records it.
+  const zone = () => weekly?.timeZone || "UTC";
+  function wallClock(t, tz) {
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(t).map((x) => [x.type, Number(x.value)]));
+    return { p, offset: Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(t.getTime() / 60000) * 60000 };
   }
-  // A snooze that has run out counts as no answer, so the item's buttons come back.
-  const live = (a) => a && !(a.choice === "later" && !a.applied && !(a.until && a.until > new Date().toISOString()));
+  // The next 6:00 in the task's zone. The offset is read again at 6:00 itself, so a daylight-saving change overnight lands on 6, not 5 or 7.
+  function nextSixAM() {
+    const tz = zone();
+    const { p, offset } = wallClock(new Date(), tz);
+    const local = Date.UTC(p.year, p.month - 1, p.hour < 6 ? p.day : p.day + 1, 6, 0);
+    const guess = new Date(local - offset);
+    return new Date(local - wallClock(guess, tz).offset).toISOString();
+  }
+  // A snooze that has run out counts as no answer, so the item's buttons come back, whatever the weekly session wrote on it.
+  const live = (a) => a && !(a.choice === "later" && !(a.until && a.until > new Date().toISOString()));
 
   async function save(key, choice, text) {
     if (!db || !canWrite) return;
