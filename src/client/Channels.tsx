@@ -356,6 +356,8 @@ function ApprovalCard(props: {
   );
 }
 
+type ModelLimits = { model: string; contextWindow: number; maxSteps: number; maxTokens: number; maxMillis: number };
+
 type Purpose = { current: { text: string; author: "user" | "agent"; confirmed: boolean; version: number } | null };
 
 /** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
@@ -450,6 +452,7 @@ function ChannelView({ id }: { id: string }) {
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [limits, setLimits] = useState<ModelLimits | null>(null);
   const [target, setTarget] = useState(() => runIdFromHash(window.location.hash));
   const [configured, setConfigured] = useState<ModelInfo[]>([]);
   const source = useRef<AuthedEventSource | null>(null);
@@ -550,6 +553,15 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
+  // Reloaded when the channel's model changes, since the numbers belong to the model.
+  const channelModel = channel?.model;
+  useEffect(() => {
+    void channelModel;
+    api<ModelLimits | null>(`/api/channels/${id}/model-settings`)
+      .then(setLimits)
+      .catch(() => setLimits(null));
+  }, [id, channelModel]);
+
   const chooseModel = async (model: string | null) => {
     try {
       setChannel(await api<Channel>(`/api/channels/${id}/model`, { method: "POST", body: { model } }));
@@ -578,6 +590,12 @@ function ChannelView({ id }: { id: string }) {
             <p role="note" className="text-amber-700">
               {channel.model} is no longer configured, so this channel uses the default
               {defaultModel ? ` (${defaultModel})` : ""}.
+            </p>
+          )}
+          {limits && typeof limits.contextWindow === "number" && (
+            <p>
+              Window {limits.contextWindow.toLocaleString("en-US")} tokens · up to {limits.maxSteps} steps,{" "}
+              {limits.maxTokens.toLocaleString("en-US")} tokens and {Math.round(limits.maxMillis / 60_000)} min per run
             </p>
           )}
           {!readOnly && (

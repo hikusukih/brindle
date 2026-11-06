@@ -10,8 +10,9 @@ import { openDatabase } from "./db/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
+import { applyServerWindows, loadModelSettings, ModelSettingsStore } from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
-import { RunEngine } from "./runs.js";
+import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
 import { getTimeZone } from "./time-zone.js";
 import { builtInTools } from "./tools/index.js";
@@ -47,6 +48,21 @@ if (chosenDefault) {
     );
   }
 }
+// Per-model window and limits; a local server's own window is asked for once, now, so a mismatch fails at startup.
+const settings = new ModelSettingsStore(
+  loadModelSettings(join(dataDir, "model-settings.json")),
+  () => models.defaultSpec,
+  (spec) => models.list().some((m) => m.spec === spec),
+);
+await applyServerWindows(
+  settings,
+  [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
+  process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
+);
+const limitsFor = (spec: string | null): RunLimits => {
+  const s = settings.forSpec(spec);
+  return { ...defaultLimits, ...s };
+};
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
 const tools = builtInTools(process.env, artifacts);
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
@@ -61,7 +77,7 @@ const engine = new RunEngine(
   db,
   // A channel whose model is no longer configured falls back to the default; the channel header says so.
   (spec) => models.resolveForChannel(spec),
-  undefined,
+  limitsFor,
   tools,
 );
 // Housekeeping calls (so far, drafting purpose statements) use the utility model, else the channel's own.
@@ -82,7 +98,8 @@ if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed
 const app = createApp({
   db,
   engine,
-  models,
+  // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
+  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
   artifacts,
   purpose,
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
