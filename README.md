@@ -64,6 +64,8 @@ After a channel's third finished run, one housekeeping call drafts a sentence or
 
 ### Trying runs with the scripted model
 
+Long channels are compacted after a run ends: older runs are folded into a running summary (the transcript you read is never changed). The summary is written by the same model as the channel by default; set `BRINDLE_UTILITY_MODEL` (written `provider:name`) to use another, such as a cheaper one.
+
 For development and acceptance without a key, set `BRINDLE_MODEL=scripted` and `BRINDLE_SCRIPTED_FIXTURE` to a JSON file of canned turns.
 
 ```sh
