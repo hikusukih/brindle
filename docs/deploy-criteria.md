@@ -11,8 +11,8 @@ Brindle is useful enough to deploy when every item below holds. This is a milest
 - **Unattended runs can't go rogue or get stuck.** A scheduled run that needs approval for an external call waits for it. If nobody approves within the timeout, the run ends as "approval not given" and nothing is sent. (P4.12)
 - **Goals remember.** A goal keeps a state document that each run reads and updates. The user can view it, edit it and see its history. (P4.4, plus the boxes split from it: its gallery entry and putting the document into every goal run's context.)
 - **End-to-end proof.** A "learn Rust" goal builds a curriculum in its state document, the curriculum shows up in the gallery, and a later scheduled lesson updates its progress. (P4.7)
-- **Failures are visible.** A scheduled run that failed, was missed, or stopped on a limit leaves a report the user sees, not a silent gap. (P5.7 design note, then P5.8)
-- **Phone-first basics hold.** Installed as an app on a phone, the login persists, and channels, goals and artifacts are each one tap apart.
+- **Failures are visible.** A scheduled run that failed, was missed, or stopped on a limit leaves a report the user sees, not a silent gap. (P5.7 design note, then P5.8 stores the reports and P5.11 shows them in the goal's channel and on its Goals tile)
+- **Phone-first basics hold.** Installed as an app on a phone, the login persists, and channels, goals and artifacts are each one tap apart. The phone reaches the server over HTTPS, which installing needs. (P2.23)
 
 ## Not required to deploy
 
@@ -26,6 +26,6 @@ Brindle is useful enough to deploy when every item below holds. This is a milest
 
 ## Deploy-path boxes
 
-These boxes, and every box they need, are taken before any other free box: P2.10, P2.11, P2.11a, P3.4, P4.3a, P4.4 and the boxes split from it (P4.4a, P4.4b, P4.4c), P4.7, P4.12, P5.7, P5.8.
+These boxes, and every box they need, are taken before any other free box: P2.10, P2.11, P2.11a, P3.4, P4.3a, P4.4 and the boxes split from it (P4.4a, P4.4b, P4.4c), P4.7, P4.12, P5.7, P5.8, P5.11, P2.23.
 
 When a box on this list is split, the new suffixed boxes join the list. When every criterion above holds, the user says so and this section is emptied.
