@@ -32,7 +32,7 @@ describe("assembleContext", () => {
       summary: "Earlier facts",
     });
     expect(messages.map((m) => m.role)).toEqual(["system", "system", "system", "user", "assistant", "user"]);
-    expect(messages[1]?.content).toBe("Purpose: Rust");
+    expect(messages[1]?.content).toContain("Purpose: Rust");
     expect(messages[2]?.content).toContain("Earlier facts");
     expect(messages.at(-1)?.content).toBe("now");
     expect(report.layers.map((l) => l.name)).toEqual([
@@ -105,6 +105,22 @@ describe("assembleContext", () => {
     // A report stored before these fields existed is not counted as a break.
     const legacy = { firstRunId: "r1" };
     expect(assembleContext({ ...base, model: "a", toolSet: "t1", previous: legacy }).report.breaks).toEqual([]);
+  });
+
+  it("records a drafted, edited or restored scope statement as a planned break, and an unchanged one as none", () => {
+    const base = {
+      past: [run("r1", 10)],
+      current: [{ role: "user" as const, content: "hi" }],
+      model: "a",
+      toolSet: "t",
+    };
+    const none = assembleContext(base).report;
+    const v1 = assembleContext({ ...base, scopeStatement: { kind: "purpose", text: "Plan a trip." }, previous: none });
+    expect(v1.report.breaks).toEqual(["scope_statement_change"]);
+    const same = { scopeStatement: { kind: "purpose" as const, text: "Plan a trip." }, previous: v1.report };
+    expect(assembleContext({ ...base, ...same }).report.breaks).toEqual([]);
+    const edited = { scopeStatement: { kind: "purpose" as const, text: "Plan two trips." }, previous: v1.report };
+    expect(assembleContext({ ...base, ...edited }).report.breaks).toEqual(["scope_statement_change"]);
   });
 
   it("refuses to send a request over the window", () => {

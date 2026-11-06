@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Channel, Run } from "./api";
 import { ChannelsScreen } from "./Channels";
@@ -12,13 +12,19 @@ vi.mock("./events", () => ({
 }));
 
 const stamp = "2026-01-02T03:04:05.000Z";
-const channel = (id: string, name: string, archivedAt: string | null = null): Channel => ({
+const channel = (
+  id: string,
+  name: string,
+  archivedAt: string | null = null,
+  goalId: string | null = null,
+): Channel => ({
   id,
   name,
   createdAt: stamp,
   updatedAt: stamp,
   archivedAt,
   model: null,
+  goalId,
 });
 
 // Stands in for the authorized event stream; a test pushes events through the most recent instance.
@@ -73,6 +79,69 @@ afterEach(() => {
   cleanup();
   window.location.hash = "";
   vi.unstubAllGlobals();
+});
+
+describe("a goal's channel", () => {
+  it("leaves rename, archive and delete to the goal in the list", async () => {
+    stubFetch({
+      "/api/channels?archived=false": () =>
+        Response.json([channel("g1", "Rust", null, "goal1"), channel("c1", "Plans")]),
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText(/A goal's channel/)).toBeTruthy();
+    // Only the ordinary channel has the three buttons.
+    expect(screen.getAllByRole("button", { name: "Delete" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Rename" })).toHaveLength(1);
+    expect(screen.getAllByRole("button", { name: "Archive" })).toHaveLength(1);
+  });
+
+  const goalRoutes = (extra: Record<string, Handler> = {}) => ({
+    "/api/models": () => Response.json({ default: null, models: [] }),
+    "/api/channels": () => Response.json([channel("g1", "Rust", null, "goal1")]),
+    "/api/channels/g1/runs": () => Response.json([]),
+    "/api/goals/goal1": () =>
+      Response.json({
+        id: "goal1",
+        title: "Learn Rust",
+        status: "active",
+        brief: { text: "Finish the book by June." },
+      }),
+    ...extra,
+  });
+
+  it("pins the goal's brief at the top of the channel", async () => {
+    stubFetch(goalRoutes());
+    window.location.hash = "#/channels/g1";
+    render(<ChannelsScreen />);
+    const brief = await screen.findByRole("region", { name: "Goal" });
+    expect(await within(brief).findByText("Finish the book by June.")).toBeTruthy();
+    expect(within(brief).getByText(/Learn Rust/)).toBeTruthy();
+  });
+
+  it("asks about the channel's artifacts before deleting the goal, keeping them by default", async () => {
+    let deleteBody: unknown = "unset";
+    const calls = stubFetch(
+      goalRoutes({
+        "/api/channels/g1/artifacts": () => Response.json([{ id: "a1", title: "Notes" }]),
+        "/api/goals/goal1": (method, body) => {
+          if (method !== "DELETE")
+            return Response.json({ id: "goal1", title: "Learn Rust", status: "active", brief: { text: "b" } });
+          deleteBody = body;
+          return new Response(null, { status: 204 });
+        },
+      }),
+    );
+    window.location.hash = "#/channels/g1";
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Delete goal" }));
+    expect(await screen.findByRole("radio", { name: "Keep all artifacts" })).toHaveProperty("checked", true);
+    fireEvent.click(await screen.findByRole("radio", { name: "Delete all artifacts" }));
+    fireEvent.click(
+      within(screen.getByRole("region", { name: "Delete goal" })).getByRole("button", { name: "Delete goal" }),
+    );
+    await waitFor(() => expect(calls).toContain("DELETE /api/goals/goal1"));
+    expect(deleteBody).toEqual({ deleteArtifacts: ["a1"] });
+  });
 });
 
 describe("channel list", () => {
@@ -318,6 +387,44 @@ describe("channel view", () => {
     });
     expect(await screen.findByText("Model: anthropic:claude-test")).toBeTruthy();
     expect(calls).toContain("POST /api/channels/c1/model");
+  });
+
+  it("shows the purpose statement as a draft, lets the user edit it, and drafts on request", async () => {
+    window.location.hash = "#/channels/c1";
+    let current: { text: string; author: string; confirmed: boolean; version: number } | null = {
+      text: "Planning a trip.",
+      author: "agent",
+      confirmed: false,
+      version: 1,
+    };
+    const calls = stubFetch({
+      "/api/models": () => Response.json(twoModels),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/purpose": (method, body) => {
+        if (method === "PUT") {
+          current = { text: (body as { text: string }).text, author: "user", confirmed: true, version: 2 };
+        }
+        return Response.json({ current, versions: [] });
+      },
+      "/api/channels/c1/purpose/draft": () => {
+        current = { text: "A fresh draft.", author: "agent", confirmed: false, version: 3 };
+        return Response.json({ current, versions: [] });
+      },
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText("Planning a trip.")).toBeTruthy();
+    expect(screen.getByText("draft")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Edit purpose" }));
+    fireEvent.change(screen.getByLabelText("Purpose statement"), { target: { value: "Lisbon in May." } });
+    fireEvent.click(screen.getByRole("button", { name: "Save purpose" }));
+    expect(await screen.findByText("Lisbon in May.")).toBeTruthy();
+    expect(screen.queryByText("draft")).toBeNull();
+    expect(calls).toContain("PUT /api/channels/c1/purpose");
+
+    fireEvent.click(screen.getByRole("button", { name: "Draft one" }));
+    expect(await screen.findByText("A fresh draft.")).toBeTruthy();
   });
 
   it("scrolls to and highlights the run named in the address, and only that one", async () => {

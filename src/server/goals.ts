@@ -62,6 +62,17 @@ export function refuseGoalChannel(db: Db, channelId: string): void {
   }
 }
 
+/** Which goal owns each goal channel, so the channel list can mark them. */
+export function goalIdsByChannel(db: Db): Map<string, string> {
+  return new Map(
+    db
+      .select({ channelId: goals.channelId, id: goals.id })
+      .from(goals)
+      .all()
+      .map((g) => [g.channelId, g.id]),
+  );
+}
+
 export function listGoals(db: Db, opts: { archived?: boolean } = {}): GoalWithBrief[] {
   return db
     .select()
