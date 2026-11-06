@@ -65,7 +65,7 @@ details[open] > summary h2::after { content: " −"; }
 .built { margin: 0; padding-left: 1.2em; columns: 2 240px; column-gap: 24px; font-size: 0.93rem; }
 .how { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; padding: 14px 16px; font-size: 0.93rem; display: flex; flex-direction: column; gap: 6px; }
 .empty { color: var(--muted); }
-@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+@media (prefers-reduced-motion: reduce) { .bar i { transition: none; } }
 </style>
 
 <main>
@@ -92,8 +92,8 @@ details[open] > summary h2::after { content: " −"; }
 <script>
 (async () => {
   const $ = (id) => document.getElementById(id);
-  const LABELS = { approve: "Approve", changes: "Ask for changes...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "I commented on the PR" };
-  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Later", accept: "Recommendation taken", answer: "Answered", close: "Close", keep: "Keep open", comments: "See my PR comments" };
+  const LABELS = { approve: "Approve", changes: "Ask for changes...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Check my comments" };
+  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Later", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
 
