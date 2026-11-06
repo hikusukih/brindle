@@ -107,6 +107,13 @@ describe("assembleContext", () => {
     expect(assembleContext({ ...base, model: "a", toolSet: "t1", previous: legacy }).report.breaks).toEqual([]);
   });
 
+  it("records which version of the scope statement a request used, or null for none", () => {
+    const base = { past: [], current: [{ role: "user" as const, content: "hi" }], model: "a", toolSet: "t" };
+    expect(assembleContext(base).report.statementVersion).toBeNull();
+    const used = assembleContext({ ...base, scopeStatement: { kind: "purpose", text: "Plan a trip.", version: 3 } });
+    expect(used.report.statementVersion).toBe(3);
+  });
+
   it("records a drafted, edited or restored scope statement as a planned break, and an unchanged one as none", () => {
     const base = {
       past: [run("r1", 10)],
