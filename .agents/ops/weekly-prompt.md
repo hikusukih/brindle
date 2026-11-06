@@ -15,6 +15,7 @@ Read CLAUDE.md on origin/main first, especially "The weekly page", "Merging box 
    - close: close the PR with a comment saying the user closed it on the weekly page.
    - changes: post the user's text on the PR as a comment that quotes them and says it came from the weekly page; later sessions address it as CLAUDE.md says.
    - accept or answer on a question: open one PR on a decision/short-name branch titled "[decision] short name", opened ready, that moves the question to Settled in docs/decisions.md (or .agents/decisions.md for process) with the answer (the recommendation if accepted, otherwise the user's words, quoted), lifts the needs decision marker it settles, adds a box only if the answer calls for one and only what it says, and closes the question's old Ask PR if it has one. Quote the user's answer in the description.
+   - comments: the user reviewed on GitHub. Read their comments on the PR (those without the Claude Code footer) and post one comment listing them as the changes to address, so later sessions treat them like a needs-changes review; if a comment is a question rather than a change, answer it there.
    - later or keep: do nothing.
    Then update that answer's document with "applied", a few words naming what you did and the PR, pinned to the version you read.
 

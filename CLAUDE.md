@@ -90,6 +90,7 @@ The plan changes through proposal PRs, kept apart from box work, so the user can
 The user's single view of what waits on them is the weekly page: a private claude.ai page, rebuilt every day by the weekly scheduled task (its link and prompt are in the task's configuration; `.agents/ops/weekly-prompt.md` has the text). It is called weekly so it never reads as urgent. It lists design notes, questions, `[plan]` PRs sorted into direction, gaps in approved designs, bookkeeping and moot, and the PRs only the user can merge, each with buttons the user taps.
 
 - Only the user can write answers there, so an answer on the page is the user's own word, as good as a merge or a comment from them. The weekly session acts on it: it merges what the user approved, closes what they closed, posts a requested change as a comment quoting them, and records each answered question in a `[decision]` PR that moves it to Settled in `docs/decisions.md` (or `.agents/decisions.md`) with the answer, plus only the box the answer calls for. Then it marks the answer applied on the page.
+- "I commented on the PR" on the weekly page means the user's own comments on that PR (those without the Claude Code footer) are their review: each counts as a requested change, and each gets a reply after it.
 - A change the user requested on the weekly page counts like a `Brindle review: needs changes` for **Addressing reviews**.
 - Other sessions never write to the page; they leave questions and held proposals in their PR descriptions for the weekly session to collect.
 
