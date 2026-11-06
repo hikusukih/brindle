@@ -95,8 +95,8 @@ details[open] > summary h2::after { content: " −"; }
 <script>
 (async () => {
   const $ = (id) => document.getElementById(id);
-  const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish" };
-  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
+  const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish", ack: "Ack", file: "File it anyway" };
+  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments", ack: "Acked", file: "Will be filed" };
   const TIPS = {
     approve: "Approve. The daily session merges it, unless new commits land after you tap.",
     changes: "Ask for changes. Type what you want; it goes on the PR as a comment and blocks merging until it's fixed.",
@@ -106,6 +106,8 @@ details[open] > summary h2::after { content: " −"; }
     answer: "Answer in your own words. The daily session records them as your decision.",
     close: "Close the PR without merging it.",
     keep: "Keep it open. Nothing happens.",
+    ack: "I agree with the drop. The idea stays dropped.",
+    file: "Overrule the drop. The daily session files it as a plan PR, even over the cap.",
   };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
@@ -152,6 +154,7 @@ details[open] > summary h2::after { content: " −"; }
     const li = el("li", { class: "item" }, title);
     if (item.note) li.append(el("div", { class: "n" }, item.note));
     if (item.rec) li.append(el("div", { class: "rec" }, el("b", {}, "Recommend"), item.rec));
+    if (item.dropped) li.append(el("div", { class: "rec" }, "(dropped: " + item.dropped + ")"));
     if (!sec.actions.length) return li;
     const acts = el("div", { class: "acts" });
     if (a) {
