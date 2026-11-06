@@ -95,8 +95,8 @@ details[open] > summary h2::after { content: " −"; }
 <script>
 (async () => {
   const $ = (id) => document.getElementById(id);
-  const LABELS = { approve: "Approve", changes: "Ask for changes...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Check my comments" };
-  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Later", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
+  const LABELS = { approve: "Approve", changes: "Ask for changes...", later: "Snooze till 6 AM", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Check my comments" };
+  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
 
@@ -111,9 +111,22 @@ details[open] > summary h2::after { content: " −"; }
     return e;
   }
 
+  // The next 6:00 in New York, as an ISO time. The offset is read from Intl so daylight saving is handled.
+  function nextSixAM() {
+    const now = new Date();
+    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: "America/New_York", hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
+      .formatToParts(now).map((x) => [x.type, Number(x.value)]));
+    const offset = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(now.getTime() / 60000) * 60000;
+    const day = p.hour < 6 ? p.day : p.day + 1;
+    return new Date(Date.UTC(p.year, p.month - 1, day, 6, 0) - offset).toISOString();
+  }
+  // A snooze that has run out counts as no answer, so the item's buttons come back.
+  const live = (a) => a && !(a.choice === "later" && !a.applied && !(a.until && a.until > new Date().toISOString()));
+
   async function save(key, choice, text) {
     if (!db || !canWrite) return;
     const body = { choice, at: new Date().toISOString() };
+    if (choice === "later") body.until = nextSixAM();
     if (text) body.text = text;
     try { await db.collection("answers").doc(key).set(body); setStatus(""); }
     catch (e) { setStatus(e && e.code === "invalid_argument" ? "Only the page's owner can answer here." : "Couldn't save that. Try again in a moment."); }
@@ -124,7 +137,7 @@ details[open] > summary h2::after { content: " −"; }
   }
 
   function renderItem(sec, item) {
-    const a = answers[item.key];
+    const a = live(answers[item.key]) ? answers[item.key] : null;
     const title = el("div", { class: "t" }, item.pr ? el("a", { href: item.url, target: "_blank", rel: "noopener" }, "#" + item.pr) : null, item.title);
     const li = el("li", { class: "item" }, title);
     if (item.note) li.append(el("div", { class: "n" }, item.note));
@@ -168,14 +181,14 @@ details[open] > summary h2::after { content: " −"; }
     const wrap = el("div", { style: "display:flex;flex-direction:column;gap:40px" });
     for (const sec of weekly.sections) {
       const actionable = sec.actions.length > 0;
-      const n = sec.items.length, done = sec.items.filter((i) => answers[i.key]).length;
+      const n = sec.items.length, done = sec.items.filter((i) => live(answers[i.key])).length;
       if (actionable) { total += n; answered += done; }
       const head = el("div", { class: "sec-head" }, el("h2", { id: "h-" + sec.id }, sec.title),
         actionable ? el("span", { class: "count" + (done === n ? " done" : "") }, done + " of " + n) : el("span", { class: "count done" }, n + ""));
       const s = el("section", { "aria-labelledby": "h-" + sec.id, class: actionable ? "" : "quiet" }, head, el("p", { class: "why" }, sec.why));
       if (sec.batch && canWrite && done < n) {
         s.append(el("div", { class: "acts" }, el("button", { class: "primary", onclick: async () => {
-          for (const it of sec.items) if (!answers[it.key]) await save(it.key, sec.batch);
+          for (const it of sec.items) if (!live(answers[it.key])) await save(it.key, sec.batch);
         } }, (LABELS[sec.batch] || sec.batch) + " all " + (n - done) + " remaining")));
       }
       s.append(el("ul", { class: "items" }, ...sec.items.map((it) => renderItem(sec, it))));
@@ -186,6 +199,8 @@ details[open] > summary h2::after { content: " −"; }
     $("barfill").style.width = total ? (100 * answered / total) + "%" : "0";
   }
 
+  // Coming back to the tab after 6 AM shows snoozed items again without a reload.
+  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
   const timer = setTimeout(() => { if (!weekly) setStatus("The list can't be reached yet. It will appear when the connection comes back."); }, 10000);
   db = await claude.use("db");
   if (!db) { clearTimeout(timer); $("summary").textContent = "This view can't load the list. Open the page while signed in to claude.ai."; return; }
