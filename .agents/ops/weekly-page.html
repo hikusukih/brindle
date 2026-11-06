@@ -95,8 +95,18 @@ details[open] > summary h2::after { content: " −"; }
 <script>
 (async () => {
   const $ = (id) => document.getElementById(id);
-  const LABELS = { approve: "Approve", changes: "I'mna need...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish" };
+  const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish" };
   const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments" };
+  const TIPS = {
+    approve: "Approve. The daily session merges it, unless new commits land after you tap.",
+    changes: "Ask for changes. Type what you want; it goes on the PR as a comment and blocks merging until it's fixed.",
+    comments: "You left comments on GitHub. The daily session collects them as changes to make, and merging waits until they're fixed.",
+    later: "Snooze. Hides this until 6 AM New York time.",
+    accept: "Take the recommendation. The daily session records it as your decision.",
+    answer: "Answer in your own words. The daily session records them as your decision.",
+    close: "Close the PR without merging it.",
+    keep: "Keep it open. Nothing happens.",
+  };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
 
@@ -147,7 +157,7 @@ details[open] > summary h2::after { content: " −"; }
     if (a) {
       const chip = el("span", { class: "chip" + (a.applied ? " applied" : "") }, a.applied ? "Done: " + a.applied : (DONE_LABELS[a.choice] || a.choice));
       acts.append(chip);
-      if (!a.applied && canWrite) acts.append(el("button", { onclick: () => undo(item.key) }, "Undo"));
+      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the daily session acts on it.", onclick: () => undo(item.key) }, "Undo"));
       li.append(acts);
       if (a.text) li.append(el("div", { class: "answer-text" }, "“" + a.text + "”"));
       return li;
@@ -156,14 +166,14 @@ details[open] > summary h2::after { content: " −"; }
       const ta = el("textarea", { id: "ta-" + item.key, "aria-label": "Your answer for " + item.title, placeholder: "Your answer, in a sentence or two" });
       const choice = sec.actions.find((x) => TEXT_ACTIONS.has(x));
       li.append(ta);
-      acts.append(el("button", { class: "primary", onclick: () => { const v = ta.value.trim(); if (v) { open = null; save(item.key, choice, v); } } }, "Save"),
-                  el("button", { onclick: () => { open = null; render(); } }, "Cancel"));
+      acts.append(el("button", { class: "primary", title: "Save your answer.", onclick: () => { const v = ta.value.trim(); if (v) { open = null; save(item.key, choice, v); } } }, "Save"),
+                  el("button", { title: "Close the box without saving.", onclick: () => { open = null; render(); } }, "Cancel"));
       li.append(acts);
       setTimeout(() => ta.focus(), 0);
       return li;
     }
     sec.actions.forEach((act, i) => {
-      const b = el("button", { class: i === 0 ? "primary" : act === "comments" ? "info" : "", onclick: () => { if (TEXT_ACTIONS.has(act)) { open = item.key; render(); } else save(item.key, act); } }, LABELS[act] || act);
+      const b = el("button", { class: i === 0 ? "primary" : act === "comments" ? "info" : "", title: TIPS[act] || "", onclick: () => { if (TEXT_ACTIONS.has(act)) { open = item.key; render(); } else save(item.key, act); } }, LABELS[act] || act);
       if (!canWrite) b.disabled = true;
       acts.append(b);
     });
@@ -187,7 +197,7 @@ details[open] > summary h2::after { content: " −"; }
         actionable ? el("span", { class: "count" + (done === n ? " done" : "") }, done + " of " + n) : el("span", { class: "count done" }, n + ""));
       const s = el("section", { "aria-labelledby": "h-" + sec.id, class: actionable ? "" : "quiet" }, head, el("p", { class: "why" }, sec.why));
       if (sec.batch && canWrite && done < n) {
-        s.append(el("div", { class: "acts" }, el("button", { class: "primary", onclick: async () => {
+        s.append(el("div", { class: "acts" }, el("button", { class: "primary", title: "Gives every unanswered item in this section the same answer. " + (TIPS[sec.batch] || ""), onclick: async () => {
           for (const it of sec.items) if (!live(answers[it.key])) await save(it.key, sec.batch);
         } }, (LABELS[sec.batch] || sec.batch) + " all " + (n - done) + " remaining")));
       }
