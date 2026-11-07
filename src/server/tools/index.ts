@@ -1,5 +1,7 @@
 import type { ArtifactStore } from "../artifacts.js";
+import type { GoalStateAccess } from "../goal-state.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "./artifacts.js";
+import { getGoalStateTool, updateGoalStateTool } from "./goal-state.js";
 import { ToolRegistry } from "./registry.js";
 import { speakTool } from "./speak.js";
 import { webFetchTool, webSearchTool } from "./web.js";
@@ -9,7 +11,11 @@ import { webFetchTool, webSearchTool } from "./web.js";
  * BRINDLE_SPEECH_URL names an OpenAI-compatible speech endpoint (with BRINDLE_SPEECH_MODEL, BRINDLE_SPEECH_VOICE and
  * BRINDLE_SPEECH_API_KEY as needed).
  */
-export function builtInTools(env: Record<string, string | undefined>, artifacts?: ArtifactStore): ToolRegistry {
+export function builtInTools(
+  env: Record<string, string | undefined>,
+  artifacts?: ArtifactStore,
+  goalState?: GoalStateAccess,
+): ToolRegistry {
   const registry = new ToolRegistry().register(
     webFetchTool({ allowPrivate: env.BRINDLE_WEB_FETCH_ALLOW_PRIVATE === "1" }),
   );
@@ -30,6 +36,7 @@ export function builtInTools(env: Record<string, string | undefined>, artifacts?
       );
     }
   }
+  if (goalState) registry.register(getGoalStateTool(goalState)).register(updateGoalStateTool(goalState));
   if (search) registry.register(webSearchTool(search));
   return registry;
 }

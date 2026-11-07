@@ -57,6 +57,13 @@
       "when": 1793534340440,
       "tag": "0007_smart_the_hood",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "6",
+      "when": 1793585779400,
+      "tag": "0008_unknown_black_widow",
+      "breakpoints": true
     }
   ]
 }

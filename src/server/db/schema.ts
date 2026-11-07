@@ -121,6 +121,26 @@ export const scopeStatements = sqliteTable(
   (t) => [uniqueIndex("scope_statements_version_idx").on(t.scopeKind, t.scopeId, t.version)],
 );
 
+// A goal's working memory: append-only versions, the highest is current. Deleting the goal deletes them (docs/design/goals.md).
+export const goalStates = sqliteTable(
+  "goal_states",
+  {
+    id: text("id").primaryKey(),
+    goalId: text("goal_id")
+      .notNull()
+      .references(() => goals.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    text: text("text").notNull(),
+    // user | agent
+    author: text("author").notNull(),
+    runId: text("run_id"),
+    // One line saying what changed.
+    note: text("note").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("goal_states_version_idx").on(t.goalId, t.version)],
+);
+
 // Provenance is copied onto the row rather than linked, so an artifact outlives the channel and run that made it: no foreign keys here.
 export const artifacts = sqliteTable(
   "artifacts",

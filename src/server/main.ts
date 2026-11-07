@@ -7,6 +7,7 @@ import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
+import { goalStateAccess } from "./goal-state.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
@@ -48,7 +49,7 @@ if (chosenDefault) {
   }
 }
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const tools = builtInTools(process.env, artifacts);
+const tools = builtInTools(process.env, artifacts, goalStateAccess(db));
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
 const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
