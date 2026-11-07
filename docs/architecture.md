@@ -79,6 +79,8 @@ Artifacts belong to the user, not to the channel that made them. Any run in any 
 
 A suggestion run, at most daily, reads goal briefs and states, channel purpose statements and recent activity, and proposes a few cards: a next step on a goal, a schedule that would help it, a new goal, or a login to connect so a goal can do more. Accepting a card turns it into a run, a goal, a schedule or a credential request. Dismissed cards are remembered and don't come back. Suggestions can be turned off.
 
+Dreaming is a run for serendipity: now and then it sets a random handful of recent things from different scopes side by side (a run summary, a goal's state, a reference document section, a feed item) and looks for a pattern, an opportunity or a danger none of them shows alone. It offers at most a couple of findings, often none, under the same limits and dismissal memory as suggestions, and is off until the user turns it on.
+
 ## What the model is told
 
 Every request starts with fixed harness instructions that describe Brindle to the model: its surfaces (channels, goals, the feed, artifacts, reports), its tools, and how to behave. The run's place follows the scope statement: which channel or goal it is in and what kind of run it is, such as a conversation, a goal run or a suggestion run. The instructions are the same for every run, so the model server's prompt cache stays useful; the place changes per scope and so comes after them. A user-written Soul and the Home channel's directory of the instance sit in layers of their own. The context design note (`docs/design/context.md`) says where each layer goes and how big it may be.
