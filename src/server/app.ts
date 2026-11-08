@@ -319,6 +319,8 @@ export function createApp({
 
   const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   app.get("/api/goals", (c) => c.json(listGoals(db, { archived: c.req.query("archived") === "true" })));
+  // The client hides the schedule fields when there is no scheduler, so a user is never offered what POST /api/goals would refuse.
+  app.get("/api/goals/options", (c) => c.json({ schedulesAvailable: Boolean(scheduler) }));
   // Only drafts: nothing is created until the form is confirmed with POST /api/goals.
   app.post("/api/goals/draft", async (c) => {
     if (!goalDrafter) throw new HTTPException(503, { message: "No model is configured to draft with." });

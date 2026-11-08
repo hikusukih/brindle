@@ -1,6 +1,6 @@
 import type { ModelAdapter } from "./model/adapter.js";
 import { housekeepingCall } from "./purpose.js";
-import type { Scheduler } from "./scheduler.js";
+import { firesTooOften, type Scheduler } from "./scheduler.js";
 import { briefMaxChars } from "./scope-statements.js";
 
 export type GoalDraft = {
@@ -9,8 +9,6 @@ export type GoalDraft = {
   /** Present only when the words asked for a repeat and the expression passed the same checks `propose_schedule` makes. */
   schedule: { cron: string; prompt: string } | null;
 };
-
-const minGapMillis = 15 * 60_000;
 
 const instructions = [
   "You turn a person's words into a draft goal: something they want kept up over time.",
@@ -60,9 +58,7 @@ export class GoalDrafter {
     const { cron, prompt } = value as Record<string, unknown>;
     if (typeof cron !== "string" || typeof prompt !== "string" || !prompt.trim()) return null;
     try {
-      const next = this.scheduler.upcoming(cron, 5);
-      const gaps = next.slice(1).map((d, i) => d.getTime() - (next[i] as Date).getTime());
-      if (gaps.some((gap) => gap < minGapMillis)) return null;
+      if (firesTooOften(this.scheduler.upcoming(cron, 5))) return null;
     } catch {
       return null;
     }

@@ -77,7 +77,7 @@ export type ScenarioGoal = { title: string; brief: string };
 export type GoalDraftCase = {
   paste: string;
   expect: {
-    /** Whether a draft came back; a paste that yields nothing usable is refused, not guessed at. */
+    /** Whether a draft came back; a paste that yields nothing usable is refused, not guessed at. Scripted mode only: a real model may refuse a hostile paste, and the properties below still hold then. */
     drafted: boolean;
     titleIncludes?: string;
     /** Scripted mode only: a real model may word the brief differently. */
@@ -188,7 +188,8 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       scheduler,
     );
     const draft = await drafter.draft(scenario.goalDraft.paste).catch(() => null);
-    if (!!draft !== want.drafted) failures.push(`draft ${draft ? "came back" : "was refused"}, expected the opposite`);
+    if (!live && !!draft !== want.drafted)
+      failures.push(`draft ${draft ? "came back" : "was refused"}, expected the opposite`);
     if (draft && want.titleIncludes && !draft.title.includes(want.titleIncludes))
       failures.push(`title "${draft.title}" lacks "${want.titleIncludes}"`);
     if (!live && draft && want.scheduleCron !== undefined && (draft.schedule?.cron ?? null) !== want.scheduleCron)

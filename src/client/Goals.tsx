@@ -26,7 +26,17 @@ export function hueOf(title: string): number {
   return h;
 }
 
-function GoalForm({ draft, onDone, onCancel }: { draft: Draft; onDone: () => void; onCancel: () => void }) {
+function GoalForm({
+  draft,
+  schedulesAvailable,
+  onDone,
+  onCancel,
+}: {
+  draft: Draft;
+  schedulesAvailable: boolean;
+  onDone: () => void;
+  onCancel: () => void;
+}) {
   const [title, setTitle] = useState(draft.title);
   const [brief, setBrief] = useState(draft.brief);
   const [cron, setCron] = useState(draft.schedule?.cron ?? "");
@@ -35,9 +45,10 @@ function GoalForm({ draft, onDone, onCancel }: { draft: Draft; onDone: () => voi
 
   const submit = async () => {
     try {
-      const schedule = cron.trim()
-        ? { cron: cron.trim(), prompt: prompt.trim() || brief.trim() || title.trim() }
-        : undefined;
+      const schedule =
+        schedulesAvailable && cron.trim()
+          ? { cron: cron.trim(), prompt: prompt.trim() || brief.trim() || title.trim() }
+          : undefined;
       await api("/api/goals", { method: "POST", body: { title, brief, schedule } });
       onDone();
     } catch (e) {
@@ -62,11 +73,13 @@ function GoalForm({ draft, onDone, onCancel }: { draft: Draft; onDone: () => voi
         Brief
         <textarea className={`min-h-24 ${field}`} value={brief} onChange={(e) => setBrief(e.target.value)} />
       </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Schedule (five-field cron, optional)
-        <input className={field} value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 9 * * 1" />
-      </label>
-      {cron.trim() && (
+      {schedulesAvailable && (
+        <label className="flex flex-col gap-1 text-sm">
+          Schedule (five-field cron, optional)
+          <input className={field} value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 9 * * 1" />
+        </label>
+      )}
+      {schedulesAvailable && cron.trim() && (
         <label className="flex flex-col gap-1 text-sm">
           What each run should do
           <input className={field} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
@@ -103,6 +116,13 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
       .catch(() => setGoals([]));
   }, []);
   useEffect(load, [load]);
+  // Hidden until the server says it can schedule, so the form never offers what creating the goal would refuse.
+  const [schedulesAvailable, setSchedulesAvailable] = useState(false);
+  useEffect(() => {
+    api<{ schedulesAvailable: boolean }>("/api/goals/options")
+      .then((o) => setSchedulesAvailable(o.schedulesAvailable))
+      .catch(() => setSchedulesAvailable(false));
+  }, []);
 
   const create = async () => {
     setBusy(true);
@@ -122,6 +142,7 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
       {draft ? (
         <GoalForm
           draft={draft}
+          schedulesAvailable={schedulesAvailable}
           onCancel={() => setDraft(null)}
           onDone={() => {
             setDraft(null);
@@ -180,7 +201,7 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
                   {initials(g.title)}
                 </span>
                 <span className="font-medium">{g.title}</span>
-                <span className="line-clamp-2 text-sm text-slate-600">{g.brief.text}</span>
+                <span className="line-clamp-1 text-sm text-slate-600">{g.brief.text}</span>
                 <span className="mt-auto text-xs text-slate-500">
                   {g.nextRunAt ? `Next: ${format(g.nextRunAt)}` : "Not scheduled"}
                 </span>

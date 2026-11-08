@@ -76,6 +76,7 @@ describe("Goals screen", () => {
         }
         return Response.json(goals);
       },
+      "/api/goals/options": () => Response.json({ schedulesAvailable: true }),
       "/api/goals/draft": (_m, body) => {
         expect(body).toEqual({ text: "Rust, Mondays at 9" });
         return Response.json({
@@ -108,5 +109,19 @@ describe("Goals screen", () => {
     expect((await screen.findByRole("alert")).textContent).toContain("No model is configured");
     fireEvent.click(screen.getByRole("button", { name: "Write it myself" }));
     await waitFor(() => expect(screen.getByLabelText("Title")).toBeTruthy());
+  });
+
+  it("hides the schedule fields when the server has no scheduler", async () => {
+    stubFetch({
+      "/api/goals": () => Response.json([]),
+      "/api/goals/options": () => Response.json({ schedulesAvailable: false }),
+      "/api/goals/draft": () =>
+        Response.json({ title: "Learn Rust", brief: "Weekly.", schedule: { cron: "0 9 * * 1", prompt: "x" } }),
+    });
+    render(<GoalsScreen empty={empty} />);
+    fireEvent.change(await screen.findByLabelText("Describe a goal"), { target: { value: "Rust" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create" }));
+    await screen.findByLabelText("Title");
+    expect(screen.queryByLabelText(/Schedule/)).toBeNull();
   });
 });
