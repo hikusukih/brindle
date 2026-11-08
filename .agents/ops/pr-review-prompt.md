@@ -1,6 +1,6 @@
 # PR review prompt
 
-The stored prompt for the **Brindle PR Review Task** scheduled task, as installed. Triggers: a GitHub trigger on PRs being opened, plus a daily schedule after the daily box; a run with no event re-reviews every PR with new commits. Paste everything below the rule into the task; keep the text free of angle brackets, which the task editor strips.
+The stored prompt for the **Brindle PR Review Task** scheduled task, as installed. Triggers: a GitHub trigger on PRs being opened, plus a schedule at 5:30 AM and 11:30 AM America/New_York, after each box session's work has landed (the afternoon one by about 7 PM, the morning one by about 11 AM), so the next box session can act on the reviews; a run with no event re-reviews every PR with new commits. Paste everything below the rule into the task; keep the text free of angle brackets, which the task editor strips.
 
 ---
 

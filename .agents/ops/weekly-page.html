@@ -88,7 +88,7 @@ details[open] > summary h2::after { content: " −"; }
   </section>
   <div class="how">
     <strong>How this page works</strong>
-    <span>The weekly session rebuilds this list from GitHub once a day (it's called weekly so it never feels urgent). Your taps are saved right away. Its next run acts on them: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items then drop off.</span>
+    <span>The page session rebuilds this list from GitHub once a day (it's called weekly so it never feels urgent). Your taps are saved right away. The answers session acts on them twice a day, half an hour before each box session: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items drop off at the next rebuild.</span>
   </div>
 </main>
 
@@ -96,18 +96,18 @@ details[open] > summary h2::after { content: " −"; }
 (async () => {
   const $ = (id) => document.getElementById(id);
   const LABELS = { approve: "Approve", changes: "Ackshually...", later: "Later", accept: "Take the recommendation", answer: "Answer differently...", close: "Close", keep: "Keep open", comments: "Go Fish", ack: "Ack", file: "File it anyway" };
-  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till 6 AM", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments", ack: "Acked", file: "Will be filed" };
+  const DONE_LABELS = { approve: "Approved", changes: "Changes asked", later: "Snoozed till the next rebuild", accept: "Recommendation taken", answer: "Answered", close: "Closed", keep: "Kept open", comments: "See my PR comments", ack: "Acked", file: "Will be filed" };
   const TIPS = {
-    approve: "Approve. The weekly session merges it on its next daily run, unless new commits land after you tap.",
+    approve: "Approve. The answers session merges it on its next run, unless new commits land after you tap.",
     changes: "Ask for changes. Type what you want; it goes on the PR as a comment and blocks merging until it's fixed.",
-    comments: "You left comments on GitHub. The weekly session collects them as changes to make, and merging waits until they're fixed.",
-    later: "Snooze. Hides this until 6 AM your time.",
-    accept: "Take the recommendation. The weekly session records it as your decision.",
-    answer: "Answer in your own words. The weekly session records them as your decision.",
+    comments: "You left comments on GitHub. The answers session collects them as changes to make, and merging waits until they're fixed.",
+    later: "Snooze. Hides this until the list is next rebuilt.",
+    accept: "Take the recommendation. The answers session records it as your decision.",
+    answer: "Answer in your own words. The answers session records them as your decision.",
     close: "Close the PR without merging it.",
     keep: "Keep it open. Nothing happens.",
     ack: "I agree with the drop. The idea stays dropped.",
-    file: "Overrule the drop. The weekly session files it as a plan PR, even over the cap.",
+    file: "Overrule the drop. The answers session files it as a plan PR, even over the cap.",
   };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
   let weekly = null, answers = {}, db = null, canWrite = false, open = null;
@@ -123,28 +123,18 @@ details[open] > summary h2::after { content: " −"; }
     return e;
   }
 
-  // The weekly task writes its own time zone into the list, so the repo never records it.
-  const zone = () => weekly?.timeZone || "UTC";
-  function wallClock(t, tz) {
-    const p = Object.fromEntries(new Intl.DateTimeFormat("en-US", { timeZone: tz, hourCycle: "h23", year: "numeric", month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })
-      .formatToParts(t).map((x) => [x.type, Number(x.value)]));
-    return { p, offset: Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute) - Math.floor(t.getTime() / 60000) * 60000 };
-  }
-  // The next 6:00 in the task's zone. The offset is read again at 6:00 itself, so a daylight-saving change overnight lands on 6, not 5 or 7.
-  function nextSixAM() {
-    const tz = zone();
-    const { p, offset } = wallClock(new Date(), tz);
-    const local = Date.UTC(p.year, p.month - 1, p.hour < 6 ? p.day : p.day + 1, 6, 0);
-    const guess = new Date(local - offset);
-    return new Date(local - wallClock(guess, tz).offset).toISOString();
-  }
-  // A snooze that has run out counts as no answer, so the item's buttons come back, whatever the weekly session wrote on it.
-  const live = (a) => a && !(a.choice === "later" && !(a.until && a.until > new Date().toISOString()));
+  // A snooze lasts until the next rebuild: it counts as no answer once the list was gathered after the tap, so the item's buttons come back.
+  // Lists written before generatedAt existed fall back to the old fixed-time snooze.
+  const live = (a) => {
+    if (!a) return false;
+    if (a.choice !== "later") return true;
+    if (weekly?.generatedAt) return Date.parse(a.at) > Date.parse(weekly.generatedAt);
+    return !!(a.until && a.until > new Date().toISOString());
+  };
 
   async function save(key, choice, text) {
     if (!db || !canWrite) return;
     const body = { choice, at: new Date().toISOString() };
-    if (choice === "later") body.until = nextSixAM();
     if (text) body.text = text;
     try { await db.collection("answers").doc(key).set(body); setStatus(""); }
     catch (e) { setStatus(e && e.code === "invalid_argument" ? "Only the page's owner can answer here." : "Couldn't save that. Try again in a moment."); }
@@ -166,7 +156,7 @@ details[open] > summary h2::after { content: " −"; }
     if (a) {
       const chip = el("span", { class: "chip" + (a.applied ? " applied" : "") }, a.applied ? "Done: " + a.applied : (DONE_LABELS[a.choice] || a.choice));
       acts.append(chip);
-      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the weekly session acts on it.", onclick: () => undo(item.key) }, "Undo"));
+      if (!a.applied && canWrite) acts.append(el("button", { title: "Take back this answer. Works until the answers session acts on it.", onclick: () => undo(item.key) }, "Undo"));
       li.append(acts);
       if (a.text) li.append(el("div", { class: "answer-text" }, "“" + a.text + "”"));
       return li;
@@ -218,8 +208,6 @@ details[open] > summary h2::after { content: " −"; }
     $("barfill").style.width = total ? (100 * answered / total) + "%" : "0";
   }
 
-  // Coming back to the tab after 6 AM shows snoozed items again without a reload.
-  document.addEventListener("visibilitychange", () => { if (!document.hidden) render(); });
   const timer = setTimeout(() => { if (!weekly) setStatus("The list can't be reached yet. It will appear when the connection comes back."); }, 10000);
   db = await claude.use("db");
   if (!db) { clearTimeout(timer); $("summary").textContent = "This view can't load the list. Open the page while signed in to claude.ai."; return; }
@@ -228,7 +216,7 @@ details[open] > summary h2::after { content: " −"; }
   db.doc("weekly/current").onSnapshot((snap) => {
     if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
     weekly = snap.exists ? snap.data() : null;
-    if (!weekly) { $("summary").textContent = "No list yet. The weekly session writes the first one."; return; }
+    if (!weekly) { $("summary").textContent = "No list yet. The page session writes the first one."; return; }
     render();
   }, () => { clearTimeout(timer); setStatus("The list stopped updating. Reload the page to try again."); });
   db.collection("answers").onSnapshot((snap) => {
