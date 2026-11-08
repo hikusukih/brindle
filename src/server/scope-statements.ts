@@ -106,8 +106,13 @@ export function restoreStatement(
 export function scopeStatementFor(
   db: Db,
   channelId: string,
-): { kind: "purpose" | "goal_brief"; text: string } | undefined {
+): { kind: "purpose" | "goal_brief"; text: string; version: number } | undefined {
   const goal = db.select({ id: goals.id }).from(goals).where(eq(goals.channelId, channelId)).get();
   const current = goal ? currentStatement(db, "goal", goal.id) : currentStatement(db, "channel", channelId);
-  return current ? { kind: current.kind === "goal_brief" ? "goal_brief" : "purpose", text: current.text } : undefined;
+  if (!current) return undefined;
+  return {
+    kind: current.kind === "goal_brief" ? "goal_brief" : "purpose",
+    text: current.text,
+    version: current.version,
+  };
 }
