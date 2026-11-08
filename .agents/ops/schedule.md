@@ -3,7 +3,7 @@
 Only the clock starts sessions. Each scheduled task keeps its own copy of its prompt; the file named here is the text to paste. The expressions use the time zone set in the task configuration, which this repo does not record.
 
 - brindle daily box (`daily-box-prompt.md`): every morning, working boxes for up to 4 hours.
-- brindle planning (`planning-prompt.md`): once a day, after the daily box.
+- brindle weekly (`weekly-prompt.md`): every day, after the daily box and the review task's daily run. It acts on the user's answers on the weekly page, rebuilds the page, and files proposals within the cap. It replaced brindle planning, whose task is to be turned off when this one is installed.
 - usage maximizer (`usage-maximizer-prompt.md`): Wednesday evening, working boxes until 23:30.
 - Brindle PR Review Task (`pr-review-prompt.md`): a GitHub trigger on PRs being opened, plus a daily run after the daily box that re-reviews PRs with new commits. The task editor offers no trigger for new pushes, and agents can't start a task made in the editor.
 

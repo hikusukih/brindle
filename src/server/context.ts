@@ -46,6 +46,8 @@ export type ContextReport = {
   toolSet?: string;
   instructions?: string;
   statement?: string;
+  /** Which version of the scope statement this request used, so the debug view can name it. Null when it had none. */
+  statementVersion?: number | null;
   overflow: { layer: LayerName; detail: string }[];
 };
 
@@ -89,7 +91,7 @@ export type ContextInput = {
   /** The channel's previous request: history keeps its starting run until it outgrows its share again. */
   previous?: PreviousRequest | null;
   /** The scope statement and running summary; both arrive with purpose statements (P3.3) and compaction (P3.4). */
-  scopeStatement?: { kind: "purpose" | "goal_brief"; text: string };
+  scopeStatement?: { kind: "purpose" | "goal_brief"; text: string; version?: number };
   summary?: { version: number; text: string; runsFolded: number };
   /** The current date in the user's time zone. It sits just before the current run, so a new day moves only the end of the prompt. */
   today?: string;
@@ -144,7 +146,11 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
     summaryVersion: input.summary?.version ?? 0,
     runsFolded: input.summary?.runsFolded ?? 0,
     // Always set, even with no statement, so the first draft shows up as a planned break rather than a stray miss.
-    statement: fingerprint(input.scopeStatement ?? null),
+    // The fingerprint leaves the version out, so only a change of text is a planned break; a restore of the same text is not.
+    statement: fingerprint(
+      input.scopeStatement ? { kind: input.scopeStatement.kind, text: input.scopeStatement.text } : null,
+    ),
+    statementVersion: input.scopeStatement?.version ?? null,
   };
   const prev = input.previous;
   // A report from before these fields existed has nothing to compare, so it is not counted as a break.
