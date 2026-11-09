@@ -13,6 +13,8 @@ import {
 import type { Db } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
+import { scopeStatementFor } from "./scope-statements.js";
+import { describeToday } from "./time-zone.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
 import { estimateTokens, sizeResult } from "./tools/sizing.js";
 
@@ -139,6 +141,8 @@ export class RunEngine {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly settled = new Map<string, Promise<void>>();
   private readonly live = new Map<string, LiveRun>();
+  /** Called after a run ends as done, for housekeeping such as drafting a purpose statement. Must not throw into the run. */
+  onRunDone?: (channelId: string) => void;
 
   constructor(
     private readonly db: Db,
@@ -146,6 +150,14 @@ export class RunEngine {
     private readonly limits: RunLimits = defaultLimits,
     private readonly tools: ToolRegistry = new ToolRegistry(),
   ) {}
+
+  private today(): string | undefined {
+    const zone = this.timeZone();
+    return zone ? describeToday(zone) : undefined;
+  }
+
+  /** The user's time zone, read per request so a change applies at once; null leaves the date out of the prompt. */
+  timeZone: () => string | null = () => null;
 
   /** Runs left "running" by a previous process can never finish; say so instead of leaving them spinning. */
   recoverInterrupted(now = new Date()): number {
@@ -379,9 +391,11 @@ export class RunEngine {
               current: messages,
               window: this.limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
+              scopeStatement: scopeStatementFor(this.db, channelId),
               model: getChannel(this.db, channelId).model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
+              today: this.today(),
             });
           } catch (error) {
             // Nothing is sent, but keep the report at the step it happened so the debug view shows why.
@@ -425,6 +439,9 @@ export class RunEngine {
           if (!tool) return { call, problem: `Error: no tool named ${call.name} is available.` };
           const invalid = validateArguments(tool, call.arguments);
           if (invalid) return { call, tool, problem: `Error: invalid arguments: ${invalid}.` };
+          // A precheck refusal is not a bad argument (an archived goal, a full cap), so it speaks for itself.
+          const refused = tool.precheck?.(call.arguments, { scope });
+          if (refused) return { call, tool, problem: refused };
           return { call, tool, ask: needsApproval(tool, call, scope) };
         });
         for (const { call, tool, ask } of checked) {
@@ -560,6 +577,15 @@ export class RunEngine {
     this.live.delete(runId);
     for (const listener of this.listeners.get(runId) ?? []) listener(null);
     this.listeners.delete(runId);
+    // After everything the user waits on; a failing hook must never touch the run.
+    const run = this.db.select().from(runs).where(eq(runs.id, runId)).get();
+    if (run && status === "done") {
+      try {
+        this.onRunDone?.(run.channelId);
+      } catch {
+        // The hook is housekeeping; the run is already finished.
+      }
+    }
   }
 }
 

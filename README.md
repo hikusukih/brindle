@@ -50,13 +50,17 @@ Open `http://127.0.0.1:8787`. Data lives in `./data` unless `BRINDLE_DATA_DIR` s
 
 ### Choosing a model
 
-Set `BRINDLE_MODEL` to the default model, written `provider:name`: `openai:<model>`, `anthropic:<model>` or `scripted`. Keys come from the environment only: `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. To reach a local OpenAI-compatible server such as Ollama, set `BRINDLE_OPENAI_BASE_URL` (for example `http://127.0.0.1:11434/v1`), and no key is needed. `BRINDLE_ANTHROPIC_BASE_URL` overrides the Anthropic endpoint.
+Set `BRINDLE_MODEL` to the default model and, to offer more in the app, list the others in `BRINDLE_MODELS` (comma separated). The Settings screen shows each one with whether its key is present, and the default can be changed there; a channel's model is picked from the same list. A model is written `provider:name`: `openai:<model>`, `anthropic:<model>` or `scripted`. Keys come from the environment only: `OPENAI_API_KEY` and `ANTHROPIC_API_KEY`. To reach a local OpenAI-compatible server such as Ollama, set `BRINDLE_OPENAI_BASE_URL` (for example `http://127.0.0.1:11434/v1`), and no key is needed. `BRINDLE_ANTHROPIC_BASE_URL` overrides the Anthropic endpoint.
 
 ```sh
 OPENAI_API_KEY=... BRINDLE_MODEL=openai:<model> npm start
 ```
 
 Each channel shows the model it uses under its name, and a channel can be set to a different one with the same `provider:name` spelling; clearing the field returns it to the default. A model whose key is missing is refused when you set it. With no default and no choice on the channel, sending a message answers 503.
+
+### Purpose statements
+
+After a channel's third finished run, one housekeeping call drafts a sentence or two on what the channel is for. It is shown under the channel name as a draft, and the user can edit it in place or ask for a new draft; text the user wrote is never replaced by a draft. It is sent with every run in that channel. Housekeeping calls use the channel's own model unless `BRINDLE_UTILITY_MODEL` names another (same `provider:name` spelling), such as a cheaper one.
 
 ### Trying runs with the scripted model
 
@@ -73,7 +77,7 @@ Each turn answers one model call and the script does not loop, so a fixture of N
 
 ### Tools
 
-The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
+The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. `speak` appears when `BRINDLE_SPEECH_URL` points at an OpenAI-compatible speech API (the base, such as `http://127.0.0.1:8880/v1`; the request goes to `/audio/speech`). It saves the speech as an audio artifact with a player in the gallery. `BRINDLE_SPEECH_MODEL` (default `tts-1`) and `BRINDLE_SPEECH_VOICE` (default `alloy`) choose what to ask for, and `BRINDLE_SPEECH_API_KEY` is sent as a bearer token if the endpoint wants one. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
 
 ## Plug-in tools over MCP
 

@@ -1,0 +1,37 @@
+{
+  "name": "schedule-every-other-sunday-is-not-faked",
+  "description": "A cron expression cannot skip alternate weeks, so the model proposes every Sunday and says so; it does not claim a biweekly schedule.",
+  "messages": ["Run my brief every other Sunday at 9."],
+  "goal": {
+    "title": "Morning brief",
+    "brief": "A short brief of what matters, on a schedule."
+  },
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_schedule",
+            "arguments": {
+              "cron": "0 9 * * 0",
+              "prompt": "Write the weekly brief."
+            }
+          }
+        ]
+      },
+      {
+        "text": ["A schedule can't skip alternate weeks, so this runs every Sunday at 9. Approve it if weekly is fine."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["approve"],
+      "schedules": 1,
+      "crons": ["0 9 * * 0"],
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}
