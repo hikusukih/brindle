@@ -36,6 +36,7 @@ import {
 } from "./goals.js";
 import type { ModelRegistry } from "./model/config.js";
 import type { PurposeDrafter } from "./purpose.js";
+import { listReports, markAllRead, markRead, type ReportFilter, type ReportKind } from "./reports.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
 import {
@@ -214,6 +215,30 @@ export function createApp({
     }
     setSetting(db, "default_model", model);
     return c.json({ default: models.defaultSpec ?? null });
+  });
+  // Reports: one store; the feed, the panes and the digest are filters of it (docs/design/reports.md).
+  const reportFilter = (c: Context): ReportFilter => {
+    const q = c.req.query();
+    const filter: ReportFilter = { unread: q.unread === "1" || q.unread === "true" };
+    if (q.kind) {
+      if (!["found", "run", "system"].includes(q.kind))
+        throw new HTTPException(400, { message: "kind is found, run or system." });
+      filter.kind = q.kind as ReportKind;
+    }
+    if (q.goalId) filter.scope = { kind: "goal", id: q.goalId };
+    else if (q.channelId) filter.scope = { kind: "channel", id: q.channelId };
+    if (q.limit) filter.limit = Number(q.limit) || undefined;
+    return filter;
+  };
+  app.get("/api/reports", (c) => c.json(listReports(db, reportFilter(c))));
+  app.post("/api/reports/read-all", (c) => {
+    const { unread: _u, limit: _l, ...filter } = reportFilter(c);
+    return c.json({ marked: markAllRead(db, filter) });
+  });
+  app.post("/api/reports/:id/read", (c) => {
+    const report = markRead(db, c.req.param("id"));
+    if (!report) throw new HTTPException(404, { message: "No such report." });
+    return c.json(report);
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };

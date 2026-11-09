@@ -11,6 +11,7 @@ import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
 import { PurposeDrafter } from "./purpose.js";
+import { reportRunEnded } from "./reports.js";
 import { RunEngine } from "./runs.js";
 import { getSetting } from "./settings.js";
 import { getTimeZone } from "./time-zone.js";
@@ -78,6 +79,7 @@ const purpose = new PurposeDrafter(db, (channelId) => {
   };
 });
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
+engine.onRunEnded = (runId) => reportRunEnded(db, runId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);

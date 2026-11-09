@@ -145,6 +145,8 @@ export class RunEngine {
   private readonly live = new Map<string, LiveRun>();
   /** Called after a run ends as done, for housekeeping such as drafting a purpose statement. Must not throw into the run. */
   onRunDone?: (channelId: string) => void;
+  /** Called when a run ends in any state but cancelled, with its id: reports are written from it. Must not throw into the run. */
+  onRunEnded?: (runId: string) => void;
 
   constructor(
     private readonly db: Db,
@@ -588,6 +590,13 @@ export class RunEngine {
     this.listeners.delete(runId);
     // After everything the user waits on; a failing hook must never touch the run.
     const run = this.db.select().from(runs).where(eq(runs.id, runId)).get();
+    if (status !== "cancelled") {
+      try {
+        this.onRunEnded?.(runId);
+      } catch {
+        // Reports are bookkeeping; the run is already finished.
+      }
+    }
     if (run && status === "done") {
       try {
         this.onRunDone?.(run.channelId);
