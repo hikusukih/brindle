@@ -1,7 +1,17 @@
 import { type FormEvent, useCallback, useEffect, useRef, useState } from "react";
-import { type Artifact, api, type Channel, type ModelInfo, type Run, type RunEvent } from "./api";
+import {
+  type Artifact,
+  announceChannelsChanged,
+  api,
+  type Channel,
+  type ModelInfo,
+  type Run,
+  type RunEvent,
+} from "./api";
+import { DeleteChoice } from "./DeleteChoice";
 import { AuthedEventSource } from "./events";
-import { channelIdFromHash } from "./screens";
+import { GoalBrief } from "./GoalBrief";
+import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
 const primary = `${button} bg-slate-900 text-white disabled:opacity-50`;
@@ -36,12 +46,7 @@ function ChannelList() {
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const [deleting, setDeleting] = useState<{
-    channel: Channel;
-    artifacts: Artifact[];
-    choice: "keep" | "all" | "some";
-    picked: string[];
-  } | null>(null);
+  const [deleting, setDeleting] = useState<{ channel: Channel; artifacts: Artifact[] } | null>(null);
 
   const load = useCallback(() => {
     api<Channel[]>(`/api/channels?archived=${showArchived}`)
@@ -58,6 +63,7 @@ function ChannelList() {
       await api(path, { method, body });
       setRenaming(null);
       load();
+      announceChannelsChanged();
     } catch (e) {
       setProblem((e as Error).message);
     }
@@ -67,7 +73,7 @@ function ChannelList() {
   const askDelete = async (c: Channel) => {
     try {
       const made = await api<Artifact[]>(`/api/channels/${c.id}/artifacts`);
-      if (made.length) setDeleting({ channel: c, artifacts: made, choice: "keep", picked: [] });
+      if (made.length) setDeleting({ channel: c, artifacts: made });
       else if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
         await act(`/api/channels/${c.id}`, "DELETE");
     } catch (e) {
@@ -75,10 +81,9 @@ function ChannelList() {
     }
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (ids: string[]) => {
     if (!deleting) return;
-    const { channel, artifacts, choice, picked } = deleting;
-    const ids = choice === "all" ? artifacts.map((a) => a.id) : choice === "some" ? picked : [];
+    const { channel } = deleting;
     setDeleting(null);
     await act(`/api/channels/${channel.id}`, "DELETE", ids.length ? { deleteArtifacts: ids } : undefined);
   };
@@ -88,6 +93,7 @@ function ChannelList() {
     try {
       const made = await api<Channel>("/api/channels", { method: "POST", body: { name } });
       setName("");
+      announceChannelsChanged();
       window.location.hash = `#/channels/${made.id}`;
     } catch (err) {
       setProblem((err as Error).message);
@@ -111,60 +117,14 @@ function ChannelList() {
       </form>
       <Problem message={problem} />
       {deleting && (
-        <section aria-label="Delete channel" className="flex flex-col gap-2 rounded-lg border border-red-200 p-3">
-          <h2 className="font-medium">
-            Delete "{deleting.channel.name}" and its history? It made {deleting.artifacts.length}{" "}
-            {deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.
-          </h2>
-          {(
-            [
-              ["keep", "Keep all artifacts"],
-              ["all", "Delete all artifacts"],
-              ["some", "Choose which to delete"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className="flex min-h-11 items-center gap-2">
-              <input
-                type="radio"
-                name="artifact-choice"
-                checked={deleting.choice === value}
-                onChange={() => setDeleting({ ...deleting, choice: value })}
-              />
-              {label}
-            </label>
-          ))}
-          {deleting.choice === "some" && (
-            <ul className="flex flex-col">
-              {deleting.artifacts.map((a) => (
-                <li key={a.id}>
-                  <label className="flex min-h-11 items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={deleting.picked.includes(a.id)}
-                      onChange={(e) =>
-                        setDeleting({
-                          ...deleting,
-                          picked: e.target.checked
-                            ? [...deleting.picked, a.id]
-                            : deleting.picked.filter((x) => x !== a.id),
-                        })
-                      }
-                    />
-                    {a.title}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex gap-2">
-            <button type="button" className={`${quiet} text-red-700`} onClick={() => void confirmDelete()}>
-              Delete channel
-            </button>
-            <button type="button" className={quiet} onClick={() => setDeleting(null)}>
-              Cancel
-            </button>
-          </div>
-        </section>
+        <DeleteChoice
+          label="Delete channel"
+          heading={`Delete "${deleting.channel.name}" and its history? It made ${deleting.artifacts.length} ${deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.`}
+          confirmLabel="Delete channel"
+          artifacts={deleting.artifacts}
+          onConfirm={(ids) => void confirmDelete(ids)}
+          onCancel={() => setDeleting(null)}
+        />
       )}
       <div className="flex gap-2">
         <button type="button" className={quiet} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
@@ -213,25 +173,33 @@ function ChannelList() {
                 {c.name}
               </a>
             )}
-            <div className="flex flex-wrap gap-2">
-              {c.archivedAt ? (
-                <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
-                  Restore
+            {c.goalId ? (
+              <p className="text-sm text-slate-600">A goal's channel. Open it to see or delete the goal.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {c.archivedAt ? (
+                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className={quiet}
+                      onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}
+                    >
+                      Archive
+                    </button>
+                  </>
+                )}
+                <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
+                  Delete
                 </button>
-              ) : (
-                <>
-                  <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
-                    Rename
-                  </button>
-                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}>
-                    Archive
-                  </button>
-                </>
-              )}
-              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
-                Delete
-              </button>
-            </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -288,6 +256,7 @@ type SentContext = {
     layers: { name: string; tokens: number }[];
     runsDropped: number;
     breaks: string[];
+    statementVersion?: number | null;
     overflow: { layer: string; detail: string }[];
   };
   messages: SentMessage[] | null;
@@ -325,6 +294,7 @@ function SentView({ runId }: { runId: string }) {
             Step {req.step}: {req.report.layers.map((l) => `${l.name} ${l.tokens}`).join(", ")} of {req.report.budget}{" "}
             tokens
             {req.report.runsDropped ? `; ${req.report.runsDropped} older run(s) left out` : ""}
+            {req.report.statementVersion ? `; scope statement version ${req.report.statementVersion}` : ""}
             {req.report.breaks.length ? `; prompt start changed: ${req.report.breaks.join(", ")}` : ""}
           </p>
           {req.messages ? (
@@ -388,14 +358,150 @@ function ApprovalCard(props: {
   );
 }
 
+type PurposeVersion = {
+  text: string;
+  author: "user" | "agent";
+  confirmed: boolean;
+  version: number;
+  createdAt: string;
+};
+type Purpose = { current: PurposeVersion | null; versions: PurposeVersion[] };
+
+/** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
+function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
+  const [purpose, setPurpose] = useState<Purpose | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A goal's channel answers 409: it has a brief instead, so nothing is shown here.
+    api<Purpose>(`/api/channels/${id}/purpose`)
+      .then(setPurpose)
+      .catch(() => setPurpose(null));
+  }, [id]);
+
+  const act = async (path: string, method: string, body?: unknown) => {
+    try {
+      setPurpose(await api<Purpose>(`/api/channels/${id}/purpose${path}`, { method, body }));
+      setEditing(null);
+      setProblem(null);
+    } catch (e) {
+      setProblem(String((e as Error).message));
+    }
+  };
+
+  if (!purpose) return null;
+  const current = purpose.current;
+  const draft = current?.author === "agent" && !current.confirmed;
+  return (
+    <div className="flex flex-col gap-2 text-sm text-slate-600">
+      {editing === null ? (
+        <>
+          <p>
+            {current ? current.text : "No purpose statement yet. One is drafted after the first few exchanges."}
+            {draft && <span className="ml-2 text-xs uppercase text-slate-500">draft</span>}
+          </p>
+          {!readOnly && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => setEditing(current?.text ?? "")}
+              >
+                {current ? "Edit purpose" : "Write purpose"}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => act("/draft", "POST")}
+              >
+                Draft one
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act("", "PUT", { text: editing });
+          }}
+        >
+          <textarea
+            aria-label="Purpose statement"
+            className="min-h-24 rounded-lg border border-slate-300 p-2"
+            value={editing}
+            onChange={(e) => setEditing(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="min-h-11 rounded-lg bg-slate-900 px-3 text-white">
+              Save purpose
+            </button>
+            <button
+              type="button"
+              className="min-h-11 rounded-lg border border-slate-300 px-3"
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {purpose.versions.length > 1 && (
+        <details>
+          <summary className="cursor-pointer">Earlier versions</summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {[...purpose.versions]
+              .reverse()
+              .filter((v) => v.version !== current?.version)
+              .map((v) => (
+                <li key={v.version} className="flex flex-col gap-1 rounded-lg border border-slate-200 p-2">
+                  <p>{v.text}</p>
+                  <p className="text-xs text-slate-500">
+                    Version {v.version}, by {v.author === "agent" ? "Brindle" : "you"},{" "}
+                    {new Date(v.createdAt).toLocaleString()}, {v.confirmed ? "confirmed" : "not confirmed"}
+                  </p>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Restore version ${v.version}`}
+                      className="min-h-11 self-start rounded-lg border border-slate-300 px-3"
+                      onClick={() => act(`/versions/${v.version}/restore`, "POST")}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
+      <Problem message={problem} />
+    </div>
+  );
+}
+
 function ChannelView({ id }: { id: string }) {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [target, setTarget] = useState(() => runIdFromHash(window.location.hash));
   const [configured, setConfigured] = useState<ModelInfo[]>([]);
   const source = useRef<AuthedEventSource | null>(null);
+
+  useEffect(() => {
+    const onChange = () => setTarget(runIdFromHash(window.location.hash));
+    window.addEventListener("hashchange", onChange);
+    return () => window.removeEventListener("hashchange", onChange);
+  }, []);
+  // The run may arrive after the page does, so look again whenever the list changes.
+  const found = target !== null && runs.some((r) => r.id === target);
+  useEffect(() => {
+    if (found) document.getElementById(`run-${target}`)?.scrollIntoView?.({ block: "start" });
+  }, [found, target]);
 
   const reload = useCallback(async () => {
     setRuns(await api<Run[]>(`/api/channels/${id}/runs`));
@@ -501,6 +607,8 @@ function ChannelView({ id }: { id: string }) {
         ← All channels
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
+      {channel?.goalId && <GoalBrief goalId={channel.goalId} channelId={channel.id} />}
+      {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
           <p>Model: {channel.model ?? (defaultModel ? `${defaultModel} (default)` : "none configured")}</p>
@@ -530,7 +638,13 @@ function ChannelView({ id }: { id: string }) {
       )}
       <div className="flex flex-col gap-4">
         {runs.map((run) => (
-          <section key={run.id} aria-label="Run" className="flex flex-col gap-2">
+          <section
+            key={run.id}
+            id={`run-${run.id}`}
+            aria-label="Run"
+            aria-current={run.id === target ? "location" : undefined}
+            className={`flex flex-col gap-2 ${run.id === target ? "rounded-lg bg-amber-50 p-2 ring-2 ring-amber-300" : ""}`}
+          >
             {run.events.map((ev) => {
               if (ev.type === "approval_request") {
                 const d = parse(ev);
