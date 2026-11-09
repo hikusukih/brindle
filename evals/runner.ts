@@ -6,7 +6,7 @@ import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
 import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events, schedules, summaries } from "../src/server/db/schema.js";
+import { artifacts, events, goals, schedules, summaries } from "../src/server/db/schema.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
 import { effectFor, mcpTool } from "../src/server/mcp/index.js";
@@ -15,6 +15,7 @@ import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripte
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
 import { Scheduler } from "../src/server/scheduler.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
+import { proposeGoalTool } from "../src/server/tools/goal.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 import { proposeScheduleTool } from "../src/server/tools/schedule.js";
 
@@ -44,6 +45,8 @@ export type RunExpectation = {
   contextIncludes?: string[];
   /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
   schedules?: number;
+  /** How many goals exist after this run. Holds against a real model too. */
+  goals?: number;
   /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
   crons?: string[];
 };
@@ -87,6 +90,8 @@ export type Scenario = {
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
   goal?: ScenarioGoal;
+  /** Adds the real `propose_goal` tool, in an ordinary channel. */
+  proposeGoal?: boolean;
   expect: RunExpectation[];
 };
 
@@ -161,6 +166,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
   );
   const goal = scenario.goal ? createGoal(db, scenario.goal) : undefined;
   if (goal) tools.register(proposeScheduleTool(db, scheduler));
+  if (scenario.proposeGoal) tools.register(proposeGoalTool(db, scheduler));
   const engine = new RunEngine(
     db,
     live ?? new ScriptedModel(scenario.script),
@@ -256,6 +262,10 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       for (const needle of want.contextIncludes) {
         if (!sent?.includes(needle)) failures.push(`${label}: the request lacks "${needle}"`);
       }
+    }
+    if (want.goals !== undefined) {
+      const count = db.select().from(goals).all().length;
+      if (count !== want.goals) failures.push(`${label}: ${count} goal(s) exist, expected ${want.goals}`);
     }
     const made = db.select().from(schedules).orderBy(schedules.createdAt).all();
     if (want.schedules !== undefined && made.length !== want.schedules) {
