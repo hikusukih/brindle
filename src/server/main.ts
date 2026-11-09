@@ -58,15 +58,17 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
     process.exit(0);
   });
 }
+// Housekeeping (rolling compaction) uses BRINDLE_UTILITY_MODEL, defaulting to the channel's own model.
+const utilitySpec = process.env.BRINDLE_UTILITY_MODEL?.trim() || null;
 const engine = new RunEngine(
   db,
   // A channel whose model is no longer configured falls back to the default; the channel header says so.
   (spec) => models.resolveForChannel(spec),
   undefined,
   tools,
+  { utilityModel: (spec) => (utilitySpec ? models.resolve(utilitySpec) : models.resolveForChannel(spec)) },
 );
-// Housekeeping calls (so far, drafting purpose statements) use the utility model, else the channel's own.
-const utilitySpec = process.env.BRINDLE_UTILITY_MODEL?.trim() || undefined;
+// Drafting purpose statements uses the same utility model, else the channel's own.
 if (utilitySpec) models.validate(utilitySpec);
 const purpose = new PurposeDrafter(db, (channelId) => {
   const spec = utilitySpec ?? getChannel(db, channelId).model;
