@@ -218,7 +218,7 @@ details[open] > summary h2::after { content: " −"; }
   db.doc("status/current").onSnapshot((snap) => {
     if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
     list = snap.exists ? snap.data() : null;
-    if (!list) { $("summary").textContent = "No list yet. The status session writes the first one."; return; }
+    if (!list) { $("summary").hidden = false; $("summary").textContent = "No list yet. The status session writes the first one."; return; }
     render();
   }, () => { clearTimeout(timer); setStatus("The list stopped updating. Reload the page to try again."); });
   db.collection("answers").onSnapshot((snap) => {
