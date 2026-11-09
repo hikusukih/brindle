@@ -1,4 +1,4 @@
-<title>Brindle Weekly</title>
+<title>Brindle Status</title>
 <meta name="claude:viewport-fit-sides" content="cover">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,650&family=Public+Sans:wght@400;600;700&family=JetBrains+Mono:wght@500&display=swap">
@@ -74,8 +74,8 @@ details[open] > summary h2::after { content: " −"; }
 <main>
   <header>
     <div class="eyebrow" id="stamp">Brindle · loading</div>
-    <h1>Brindle Weekly</h1>
-    <p id="summary" class="empty">Loading this week's list…</p>
+    <h1>Brindle Status</h1>
+    <p id="summary" class="empty">Loading the list…</p>
     <div class="progress" aria-live="polite"><span id="prog">0 of 0 answered</span><div class="bar"><i id="barfill"></i></div></div>
     <p class="status" id="status" hidden></p>
   </header>
@@ -88,7 +88,7 @@ details[open] > summary h2::after { content: " −"; }
   </section>
   <div class="how">
     <strong>How this page works</strong>
-    <span>The page session rebuilds this list from GitHub once a day (it's called weekly so it never feels urgent). Your taps are saved right away. The answers session acts on them twice a day, half an hour before each box session: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items drop off at the next rebuild.</span>
+    <span>The status session rebuilds this list from GitHub once a day. Your taps are saved right away. The answers session acts on them twice a day, half an hour before each box session: it merges what you approved, closes what you closed, and writes each answer into the repo's decisions files, so GitHub stays the record. Done items drop off at the next rebuild.</span>
   </div>
 </main>
 
@@ -110,7 +110,7 @@ details[open] > summary h2::after { content: " −"; }
     file: "Overrule the drop. The answers session files it as a plan PR, even over the cap.",
   };
   const TEXT_ACTIONS = new Set(["changes", "answer"]);
-  let weekly = null, answers = {}, db = null, canWrite = false, open = null;
+  let list = null, answers = {}, db = null, canWrite = false, open = null;
 
   function setStatus(msg) { const s = $("status"); s.textContent = msg || ""; s.hidden = !msg; }
 
@@ -128,7 +128,7 @@ details[open] > summary h2::after { content: " −"; }
   const live = (a) => {
     if (!a) return false;
     if (a.choice !== "later") return true;
-    if (weekly?.generatedAt) return Date.parse(a.at) > Date.parse(weekly.generatedAt);
+    if (list?.generatedAt) return Date.parse(a.at) > Date.parse(list.generatedAt);
     return !!(a.until && a.until > new Date().toISOString());
   };
 
@@ -181,14 +181,14 @@ details[open] > summary h2::after { content: " −"; }
   }
 
   function render() {
-    if (!weekly) return;
-    $("stamp").textContent = "Updated " + weekly.generated + " · covering " + weekly.window;
-    $("summary").textContent = weekly.summary; $("summary").className = "";
-    const built = $("built"); built.replaceChildren(...(weekly.built || []).map((b) => el("li", {}, b)));
+    if (!list) return;
+    $("stamp").textContent = "Updated " + list.generated + " · covering " + list.window;
+    $("summary").textContent = list.summary; $("summary").className = "";
+    const built = $("built"); built.replaceChildren(...(list.built || []).map((b) => el("li", {}, b)));
     const host = $("sections"); host.replaceChildren();
     let total = 0, answered = 0;
     const wrap = el("div", { style: "display:flex;flex-direction:column;gap:40px" });
-    for (const sec of weekly.sections) {
+    for (const sec of list.sections) {
       const actionable = sec.actions.length > 0;
       const n = sec.items.length, done = sec.items.filter((i) => live(answers[i.key])).length;
       if (actionable) { total += n; answered += done; }
@@ -208,15 +208,15 @@ details[open] > summary h2::after { content: " −"; }
     $("barfill").style.width = total ? (100 * answered / total) + "%" : "0";
   }
 
-  const timer = setTimeout(() => { if (!weekly) setStatus("The list can't be reached yet. It will appear when the connection comes back."); }, 10000);
+  const timer = setTimeout(() => { if (!list) setStatus("The list can't be reached yet. It will appear when the connection comes back."); }, 10000);
   db = await claude.use("db");
   if (!db) { clearTimeout(timer); $("summary").textContent = "This view can't load the list. Open the page while signed in to claude.ai."; return; }
   const user = await claude.use("user");
   canWrite = user ? (user.isOwner ? await user.isOwner() : false) : false;
-  db.doc("weekly/current").onSnapshot((snap) => {
+  db.doc("status/current").onSnapshot((snap) => {
     if (!snap.metadata.fromCache) { clearTimeout(timer); setStatus(""); }
-    weekly = snap.exists ? snap.data() : null;
-    if (!weekly) { $("summary").textContent = "No list yet. The page session writes the first one."; return; }
+    list = snap.exists ? snap.data() : null;
+    if (!list) { $("summary").textContent = "No list yet. The status session writes the first one."; return; }
     render();
   }, () => { clearTimeout(timer); setStatus("The list stopped updating. Reload the page to try again."); });
   db.collection("answers").onSnapshot((snap) => {
