@@ -8,6 +8,21 @@ import type { Tool } from "./registry.js";
 const minGapMillis = 15 * 60_000;
 const maxPerGoal = 10;
 
+/** Why a cron expression can't be proposed (it doesn't parse, or fires more often than every 15 minutes), or null. */
+export function cronProblem(scheduler: Scheduler, cron: string): string | null {
+  let next: Date[];
+  try {
+    next = scheduler.upcoming(cron, 5);
+  } catch (error) {
+    return `Error: ${(error as Error).message} Use five fields: minute hour day-of-month month day-of-week.`;
+  }
+  // The first gap alone can be a long one (":00 and :10" asked at :11), so look across several.
+  const gaps = next.slice(1).map((d, i) => d.getTime() - (next[i] as Date).getTime());
+  if (gaps.some((gap) => gap < minGapMillis))
+    return "Error: that would fire more than once every 15 minutes. Propose a less frequent schedule.";
+  return null;
+}
+
 /**
  * `external`, on purpose: the approval card is how a schedule is "proposed and confirmed" (docs/design/goals.md), so
  * the agent never creates one by itself. The card shows the user's own words back as the next few dates and times in
@@ -28,17 +43,7 @@ export function proposeScheduleTool(db: Db, scheduler: Scheduler): Tool {
       return "Error: this goal is archived; the user must restore it before it can be scheduled.";
     const existing = db.select().from(schedules).where(eq(schedules.goalId, goal.id)).all().length;
     if (existing >= maxPerGoal) return `Error: this goal already has ${maxPerGoal} schedules, the most it can have.`;
-    let next: Date[];
-    try {
-      next = scheduler.upcoming(String(args.cron), 5);
-    } catch (error) {
-      return `Error: ${(error as Error).message} Use five fields: minute hour day-of-month month day-of-week.`;
-    }
-    // The first gap alone can be a long one (":00 and :10" asked at :11), so look across several.
-    const gaps = next.slice(1).map((d, i) => d.getTime() - (next[i] as Date).getTime());
-    if (gaps.some((gap) => gap < minGapMillis))
-      return "Error: that would fire more than once every 15 minutes. Propose a less frequent schedule.";
-    return null;
+    return cronProblem(scheduler, String(args.cron));
   };
 
   const show = (d: Date) =>

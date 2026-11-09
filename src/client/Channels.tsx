@@ -256,6 +256,7 @@ type SentContext = {
     layers: { name: string; tokens: number }[];
     runsDropped: number;
     breaks: string[];
+    statementVersion?: number | null;
     overflow: { layer: string; detail: string }[];
   };
   messages: SentMessage[] | null;
@@ -293,6 +294,7 @@ function SentView({ runId }: { runId: string }) {
             Step {req.step}: {req.report.layers.map((l) => `${l.name} ${l.tokens}`).join(", ")} of {req.report.budget}{" "}
             tokens
             {req.report.runsDropped ? `; ${req.report.runsDropped} older run(s) left out` : ""}
+            {req.report.statementVersion ? `; scope statement version ${req.report.statementVersion}` : ""}
             {req.report.breaks.length ? `; prompt start changed: ${req.report.breaks.join(", ")}` : ""}
           </p>
           {req.messages ? (
@@ -358,7 +360,14 @@ function ApprovalCard(props: {
 
 type ModelLimits = { model: string; contextWindow: number; maxSteps: number; maxTokens: number; maxMillis: number };
 
-type Purpose = { current: { text: string; author: "user" | "agent"; confirmed: boolean; version: number } | null };
+type PurposeVersion = {
+  text: string;
+  author: "user" | "agent";
+  confirmed: boolean;
+  version: number;
+  createdAt: string;
+};
+type Purpose = { current: PurposeVersion | null; versions: PurposeVersion[] };
 
 /** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
 function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
@@ -440,6 +449,35 @@ function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
             </button>
           </div>
         </form>
+      )}
+      {purpose.versions.length > 1 && (
+        <details>
+          <summary className="cursor-pointer">Earlier versions</summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {[...purpose.versions]
+              .reverse()
+              .filter((v) => v.version !== current?.version)
+              .map((v) => (
+                <li key={v.version} className="flex flex-col gap-1 rounded-lg border border-slate-200 p-2">
+                  <p>{v.text}</p>
+                  <p className="text-xs text-slate-500">
+                    Version {v.version}, by {v.author === "agent" ? "Brindle" : "you"},{" "}
+                    {new Date(v.createdAt).toLocaleString()}, {v.confirmed ? "confirmed" : "not confirmed"}
+                  </p>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Restore version ${v.version}`}
+                      className="min-h-11 self-start rounded-lg border border-slate-300 px-3"
+                      onClick={() => act(`/versions/${v.version}/restore`, "POST")}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </details>
       )}
       <Problem message={problem} />
     </div>

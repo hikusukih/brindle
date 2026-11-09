@@ -427,6 +427,33 @@ describe("channel view", () => {
     expect(await screen.findByText("A fresh draft.")).toBeTruthy();
   });
 
+  it("lists earlier purpose statement versions and restores one", async () => {
+    window.location.hash = "#/channels/c1";
+    const at = "2026-01-02T03:04:05.000Z";
+    const v1 = { text: "Planning a trip.", author: "agent", confirmed: false, version: 1, createdAt: at };
+    const v2 = { text: "Lisbon in May.", author: "user", confirmed: true, version: 2, createdAt: at };
+    let state = { current: v2, versions: [v1, v2] };
+    const calls = stubFetch({
+      "/api/models": () => Response.json(twoModels),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/purpose": () => Response.json(state),
+      "/api/channels/c1/purpose/versions/1/restore": () => {
+        const v3 = { ...v1, author: "user", confirmed: true, version: 3 };
+        state = { current: v3, versions: [v1, v2, v3] };
+        return Response.json(state);
+      },
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText("Lisbon in May.")).toBeTruthy();
+    fireEvent.click(screen.getByText("Earlier versions"));
+    expect(screen.getByText(/Version 1, by Brindle/)).toBeTruthy();
+    expect(screen.getByText(/not confirmed/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Restore version 1" }));
+    await waitFor(() => expect(calls).toContain("POST /api/channels/c1/purpose/versions/1/restore"));
+    expect((await screen.findAllByText("Planning a trip.")).length).toBeGreaterThan(0);
+  });
+
   it("scrolls to and highlights the run named in the address, and only that one", async () => {
     window.location.hash = "#/channels/c1/runs/r2";
     const scrolled: string[] = [];
