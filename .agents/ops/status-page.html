@@ -135,6 +135,8 @@ details[open] > summary h2::after { content: " −"; }
   async function save(key, choice, text) {
     if (!db || !canWrite) return;
     const body = { choice, at: new Date().toISOString() };
+    // Only for lists written before generatedAt existed: a day-long snooze, so "Later" still works during the switchover.
+    if (choice === "later") body.until = new Date(Date.now() + 864e5).toISOString();
     if (text) body.text = text;
     try { await db.collection("answers").doc(key).set(body); setStatus(""); }
     catch (e) { setStatus(e && e.code === "invalid_argument" ? "Only the page's owner can answer here." : "Couldn't save that. Try again in a moment."); }

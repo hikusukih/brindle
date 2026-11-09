@@ -114,7 +114,7 @@ Anything under the key manager's code gets the label `needs-careful-review` and 
 
 ## The scrub rule
 
-This repo is public. Nothing in it identifies a real person's machines, network or accounts: no real host names, domains, IP addresses, email addresses, usernames or file paths from anyone's computer. Examples use reserved names (`example.com`, `192.0.2.10`) and obviously fake secrets made of repeating patterns (`sk-test-1234abcd1234abcd`), never realistic-looking random strings. gitleaks runs in CI; it is a backstop, not the rule. One exception, chosen by the user: the user's time zone, America/New_York, is recorded with the task schedule in `.agents/ops/`, so prompts can name it.
+This repo is public. Nothing in it identifies a real person's machines, network or accounts: no real host names, domains, IP addresses, email addresses, usernames or file paths from anyone's computer. Examples use reserved names (`example.com`, `192.0.2.10`) and obviously fake secrets made of repeating patterns (`sk-test-1234abcd1234abcd`), never realistic-looking random strings. gitleaks runs in CI; it is a backstop, not the rule. One exception, chosen by the user: the user's time zone, America/New_York, may appear in the repo's process files (`CLAUDE.md`, `.agents/decisions.md` and `.agents/ops/`), so the schedule and prompts can name it.
 
 ## Writing conventions
 
