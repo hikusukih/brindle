@@ -185,7 +185,7 @@ details[open] > summary h2::after { content: " −"; }
   function render() {
     if (!list) return;
     $("stamp").textContent = "Updated " + list.generated + " · covering " + list.window;
-    $("summary").textContent = list.summary; $("summary").className = "";
+    $("summary").hidden = true;
     const built = $("built"); built.replaceChildren(...(list.built || []).map((b) => el("li", {}, b)));
     const host = $("sections"); host.replaceChildren();
     let total = 0, answered = 0;
