@@ -7,8 +7,19 @@ import { artifacts, channels } from "./db/schema.js";
 
 export type Artifact = typeof artifacts.$inferSelect;
 
-export const artifactKinds = ["document", "code", "data", "page", "link"] as const;
+export const artifactKinds = ["document", "code", "data", "page", "link", "audio"] as const;
 export type ArtifactKind = (typeof artifactKinds)[number];
+/** What `create_artifact` may make: a model writes text, and audio comes only from the `speak` tool. */
+export const writableKinds = artifactKinds.filter((k): k is Exclude<ArtifactKind, "audio"> => k !== "audio");
+/** The audio types `speak` accepts from a speech server; the stored type is one of these, never the server's header as sent. */
+export const audioTypes: Record<string, string> = {
+  "audio/mpeg": "mp3",
+  "audio/wav": "wav",
+  "audio/x-wav": "wav",
+  "audio/ogg": "ogg",
+  "audio/flac": "flac",
+};
+const maxAudioBytes = 25_000_000;
 
 const maxBytes = 1_000_000;
 
@@ -18,6 +29,7 @@ const mimes: Record<ArtifactKind, { mime: string; ext: string }> = {
   data: { mime: "application/json", ext: "json" },
   page: { mime: "text/html", ext: "html" },
   link: { mime: "text/uri-list", ext: "url" },
+  audio: { mime: "audio/mpeg", ext: "mp3" },
 };
 
 export class ArtifactError extends Error {
@@ -53,8 +65,8 @@ export class ArtifactStore {
   ): Artifact {
     const title = typeof input.title === "string" ? input.title.trim() : "";
     if (!title || title.length > 200) throw new ArtifactError("invalid", "A title is 1 to 200 characters.");
-    if (!artifactKinds.includes(input.kind as ArtifactKind)) {
-      throw new ArtifactError("invalid", `kind must be one of ${artifactKinds.join(", ")}.`);
+    if (!(writableKinds as readonly string[]).includes(input.kind as string)) {
+      throw new ArtifactError("invalid", `kind must be one of ${writableKinds.join(", ")}.`);
     }
     const kind = input.kind as ArtifactKind;
     if (typeof input.content !== "string") throw new ArtifactError("invalid", "content must be text.");
@@ -84,6 +96,45 @@ export class ArtifactStore {
     const path = join(this.dir, row.file);
     mkdirSync(dirname(path), { recursive: true });
     writeFileSync(path, bytes);
+    this.db.insert(artifacts).values(row).run();
+    return row;
+  }
+
+  /** Saves speech from the `speak` tool. The type must be one of `audioTypes`; the file name is made here, not by the caller. */
+  createAudio(
+    input: { title: string; bytes: Uint8Array; contentType: string },
+    origin: { scope: "channel" | "goal"; scopeId: string; runId?: string },
+    now = new Date(),
+  ): Artifact {
+    const title = input.title.trim();
+    if (!title || title.length > 200) throw new ArtifactError("invalid", "A title is 1 to 200 characters.");
+    const mime = input.contentType.split(";")[0]?.trim().toLowerCase() ?? "";
+    const ext = audioTypes[mime];
+    if (!ext) throw new ArtifactError("invalid", `${mime || "That"} is not an audio type this server stores.`);
+    if (!input.bytes.length) throw new ArtifactError("invalid", "The speech server returned no audio.");
+    if (input.bytes.length > maxAudioBytes) throw new ArtifactError("invalid", `audio is over ${maxAudioBytes} bytes.`);
+    const id = randomUUID();
+    const scopeName =
+      origin.scope === "channel"
+        ? (this.db.select({ name: channels.name }).from(channels).where(eq(channels.id, origin.scopeId)).get()?.name ??
+          "")
+        : "";
+    const row: Artifact = {
+      id,
+      title,
+      kind: "audio",
+      scope: origin.scope,
+      scopeId: origin.scopeId,
+      scopeName,
+      runId: origin.runId ?? null,
+      file: `${id}/speech.${ext}`,
+      mime: mime === "audio/x-wav" ? "audio/wav" : mime,
+      size: input.bytes.length,
+      createdAt: now.toISOString(),
+    };
+    const path = join(this.dir, row.file);
+    mkdirSync(dirname(path), { recursive: true });
+    writeFileSync(path, input.bytes);
     this.db.insert(artifacts).values(row).run();
     return row;
   }
@@ -121,8 +172,9 @@ export class ArtifactStore {
       .orderBy(desc(artifacts.createdAt))
       .all();
     for (const a of rows) {
-      if (needle && !a.title.toLowerCase().includes(needle) && !this.content(a)?.toLowerCase().includes(needle))
-        continue;
+      // Audio has no text to match, so only its title can.
+      const body = a.kind === "audio" ? undefined : this.content(a);
+      if (needle && !a.title.toLowerCase().includes(needle) && !body?.toLowerCase().includes(needle)) continue;
       found.push(a);
       if (found.length >= (filter.limit ?? 20)) break;
     }
