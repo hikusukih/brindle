@@ -48,7 +48,7 @@ if (chosenDefault) {
   }
 }
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const tools = builtInTools(process.env, artifacts);
+const tools = builtInTools(process.env, artifacts, db);
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
 const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
