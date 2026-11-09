@@ -6,6 +6,7 @@ import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
+import { modelSummarizer } from "./compaction.js";
 import { openDatabase } from "./db/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
@@ -87,6 +88,12 @@ const app = createApp({
   models,
   artifacts,
   purpose,
+  // The default model stands in for the source channel's own here, since a seed call isn't tied to one run.
+  branching: (input) =>
+    modelSummarizer(utilitySpec ? models.resolve(utilitySpec) : models.resolveForChannel(null))({
+      ...input,
+      signal: AbortSignal.timeout(10 * 60_000),
+    }),
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,
 });

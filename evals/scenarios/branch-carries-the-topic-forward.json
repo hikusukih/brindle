@@ -1,0 +1,24 @@
+{
+  "name": "branch-carries-the-topic-forward",
+  "description": "New channel from here on the second run seeds the new channel with the facts the topic needs, and the next message there reaches the model with them; the source keeps every run.",
+  "messages": [
+    "We are planning a trip to Lisbon.",
+    "The budget is 500 dollars and we go by train.",
+    "Unrelated: what should I plant in the garden?"
+  ],
+  "script": {
+    "turns": [
+      { "text": ["Noted."] },
+      { "text": ["Noted."] },
+      { "text": ["Tomatoes."] },
+      { "text": ["Booked nothing yet."] }
+    ]
+  },
+  "branch": {
+    "fromRun": 2,
+    "script": { "turns": [{ "text": ["Trip to Lisbon. Budget: 500 dollars. By train."] }] },
+    "followUp": "What was the budget?",
+    "contextIncludes": ["Budget: 500 dollars", "By train"]
+  },
+  "expect": [{ "status": "done" }, { "status": "done" }, { "status": "done" }]
+}

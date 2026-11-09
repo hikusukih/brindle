@@ -109,6 +109,33 @@ describe("a goal's channel", () => {
     ...extra,
   });
 
+  it("offers New channel from here on a finished run and opens the new channel", async () => {
+    let body: unknown;
+    const run = {
+      id: "r1",
+      channelId: "c1",
+      status: "done",
+      stopReason: null,
+      startedAt: stamp,
+      endedAt: stamp,
+      events: [],
+    };
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([run]),
+      "/api/channels/c1/branch": (_method, b) => {
+        body = b;
+        return Response.json({ ...channel("c2", "From Plans"), branch: null }, { status: 201 });
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "New channel from here" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/channels/c2"));
+    expect(body).toEqual({ runId: "r1" });
+  });
+
   it("pins the goal's brief at the top of the channel", async () => {
     stubFetch(goalRoutes());
     window.location.hash = "#/channels/g1";

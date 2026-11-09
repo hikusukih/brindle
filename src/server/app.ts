@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
 import { requireToken } from "./auth.js";
+import { branchChannel } from "./branch.js";
 import {
   archiveChannel,
   ChannelError,
@@ -16,6 +17,7 @@ import {
   restoreChannel,
   setChannelModel,
 } from "./channels.js";
+import type { Summarize } from "./compaction.js";
 import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
@@ -61,6 +63,8 @@ type AppOptions = {
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
   // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
   purpose?: PurposeDrafter;
+  // Writes a branched channel's seed summary ("New channel from here"); absent, the channel is made empty with a note.
+  branching?: Summarize;
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
@@ -79,6 +83,7 @@ export function createApp({
   models,
   artifacts,
   purpose,
+  branching,
   scheduler,
   onTimeZoneChange,
   clientRoot,
@@ -214,6 +219,18 @@ export function createApp({
     }
     setSetting(db, "default_model", model);
     return c.json({ default: models.defaultSpec ?? null });
+  });
+  app.post("/api/channels/:id/branch", async (c) => {
+    const { runId, name } = (await c.req.json().catch(() => ({}))) as { runId?: unknown; name?: unknown };
+    if (typeof runId !== "string") throw new HTTPException(400, { message: "runId must be a string." });
+    return c.json(
+      await branchChannel(db, c.req.param("id"), runId, {
+        name,
+        summarize: branching,
+        draftPurpose: purpose ? (id, seed) => purpose.draftFromSeed(id, seed) : undefined,
+      }),
+      201,
+    );
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
