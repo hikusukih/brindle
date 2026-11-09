@@ -15,6 +15,7 @@ import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripte
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
 import { Scheduler } from "../src/server/scheduler.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
+import { proposeGoalTool } from "../src/server/tools/goal.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 import { proposeScheduleTool } from "../src/server/tools/schedule.js";
 
@@ -38,6 +39,8 @@ export type RunExpectation = {
   toolResultTruncated?: boolean;
   /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
   schedules?: number;
+  /** How many goals exist after this run. Holds against a real model too. */
+  goals?: number;
   /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
   crons?: string[];
 };
@@ -98,6 +101,8 @@ export type Scenario = {
   mcpServers?: FakeMcpServer[];
   goal?: ScenarioGoal;
   goalDraft?: GoalDraftCase;
+  /** Adds the real `propose_goal` tool, in an ordinary channel. */
+  proposeGoal?: boolean;
   expect: RunExpectation[];
 };
 
@@ -172,6 +177,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
   );
   const goal = scenario.goal ? createGoal(db, scenario.goal) : undefined;
   if (goal) tools.register(proposeScheduleTool(db, scheduler));
+  if (scenario.proposeGoal) tools.register(proposeGoalTool(db, scheduler));
   const engine = new RunEngine(
     db,
     live ?? new ScriptedModel(scenario.script),
@@ -269,6 +275,10 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       failures.push(
         `${label}: first tool result truncated was ${results[0]?.truncated}, expected ${want.toolResultTruncated}`,
       );
+    }
+    if (want.goals !== undefined) {
+      const count = db.select().from(goals).all().length;
+      if (count !== want.goals) failures.push(`${label}: ${count} goal(s) exist, expected ${want.goals}`);
     }
     const made = db.select().from(schedules).orderBy(schedules.createdAt).all();
     if (want.schedules !== undefined && made.length !== want.schedules) {
