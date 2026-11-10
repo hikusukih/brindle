@@ -180,13 +180,14 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
               Write it myself
             </button>
           </div>
-          <div role="group" aria-label="Categories" className="flex flex-wrap gap-2">
+          <fieldset className="m-0 flex flex-wrap gap-2 border-0 p-0">
+            <legend className="sr-only">Categories</legend>
             {goalCategories.map((c) => (
               <button key={c.id} type="button" className={button} disabled={busy} onClick={() => fromCategory(c)}>
                 {c.label}
               </button>
             ))}
-          </div>
+          </fieldset>
           {problem && (
             <p role="alert" className="text-sm text-red-700">
               {problem}
