@@ -19,6 +19,7 @@ import {
 import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
+import type { GoalDrafter } from "./goal-draft.js";
 import {
   archiveGoal,
   briefHistory,
@@ -58,9 +59,21 @@ type AppOptions = {
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
   // What channels may be set to use; absent, setting a channel's model is refused.
-  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
+  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
+    defaultSpec?: string;
+    // The numbers a channel's model runs under, for the channel view; absent, the view shows none.
+    settings?: (spec: string | null) => {
+      model: string;
+      contextWindow: number;
+      maxSteps: number;
+      maxTokens: number;
+      maxMillis: number;
+    };
+  };
   // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
   purpose?: PurposeDrafter;
+  // Drafts a goal from pasted words for the Goals screen; absent, the user fills the form by hand.
+  goalDrafter?: GoalDrafter;
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
@@ -79,6 +92,7 @@ export function createApp({
   models,
   artifacts,
   purpose,
+  goalDrafter,
   scheduler,
   onTimeZoneChange,
   clientRoot,
@@ -203,6 +217,18 @@ export function createApp({
   });
   // No key and no endpoint ever leave the server: only the spec, its provider and whether a key is present.
   app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null, models: models?.list() ?? [] }));
+  app.get("/api/channels/:id/model-settings", (c) => {
+    const channel = getChannel(db, c.req.param("id"));
+    const s = models?.settings?.(channel.model);
+    if (!s) return c.json(null);
+    return c.json({
+      model: s.model,
+      contextWindow: s.contextWindow,
+      maxSteps: s.maxSteps,
+      maxTokens: s.maxTokens,
+      maxMillis: s.maxMillis,
+    });
+  });
   app.put("/api/settings/default-model", async (c) => {
     const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };
     if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
@@ -315,7 +341,42 @@ export function createApp({
 
   const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   app.get("/api/goals", (c) => c.json(listGoals(db, { archived: c.req.query("archived") === "true" })));
-  app.post("/api/goals", async (c) => c.json(createGoal(db, await body(c)), 201));
+  // The client hides the schedule fields when there is no scheduler, so a user is never offered what POST /api/goals would refuse.
+  app.get("/api/goals/options", (c) => c.json({ schedulesAvailable: Boolean(scheduler) }));
+  // Only drafts: nothing is created until the form is confirmed with POST /api/goals.
+  app.post("/api/goals/draft", async (c) => {
+    if (!goalDrafter) throw new HTTPException(503, { message: "No model is configured to draft with." });
+    const { text } = await body(c);
+    if (typeof text !== "string") throw new HTTPException(400, { message: "text must be a string." });
+    try {
+      return c.json(await goalDrafter.draft(text));
+    } catch (error) {
+      throw new HTTPException(409, { message: `Couldn't draft a goal: ${(error as Error).message}` });
+    }
+  });
+  app.post("/api/goals", async (c) => {
+    const input = await body(c);
+    const schedule = input.schedule as { cron?: unknown; prompt?: unknown } | undefined | null;
+    if (schedule) {
+      if (!scheduler) throw new HTTPException(503, { message: "Schedules aren't available yet." });
+      if (typeof schedule.cron !== "string" || typeof schedule.prompt !== "string" || !schedule.prompt.trim())
+        throw new HTTPException(400, { message: "A schedule needs a cron expression and a prompt." });
+      // Checked before the goal exists, so a bad expression leaves nothing behind.
+      try {
+        scheduler.upcoming(schedule.cron, 1);
+      } catch (error) {
+        throw new HTTPException(400, { message: (error as Error).message });
+      }
+    }
+    const goal = createGoal(db, input);
+    if (schedule)
+      scheduler?.createSchedule({
+        goalId: goal.id,
+        cron: String(schedule.cron),
+        prompt: String(schedule.prompt).trim(),
+      });
+    return c.json(goal, 201);
+  });
   app.get("/api/goals/:id", (c) => c.json(getGoal(db, c.req.param("id"))));
   app.patch("/api/goals/:id", async (c) => c.json(editGoal(db, c.req.param("id"), await body(c))));
   app.get("/api/goals/:id/brief-versions", (c) => c.json(briefHistory(db, c.req.param("id"))));
