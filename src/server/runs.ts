@@ -287,8 +287,7 @@ export class RunEngine {
       else if (e.type === "approval_decision") {
         decisions.set(String(d.callId), d.decision as Decision);
         if (d.arguments) revised.set(String(d.callId), d.arguments as Record<string, unknown>);
-      }
-      else if (e.type === "tool_result") answered.add(String(d.id));
+      } else if (e.type === "tool_result") answered.add(String(d.id));
       else if (e.type === "tool_call")
         calls.push({ id: String(d.id), name: String(d.name), arguments: d.arguments as Record<string, unknown> });
     }
