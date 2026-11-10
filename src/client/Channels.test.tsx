@@ -413,6 +413,24 @@ describe("channel view", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
+  it("shows the values the user approved, not the model's draft, on a decided card", async () => {
+    window.location.hash = "#/channels/c1";
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("done", null, [
+            event(1, "approval_request", { callId: "k1", tool: "send_email", reason: "Send it", arguments: { note: "model draft" } }),
+            event(2, "approval_decision", { callId: "k1", decision: "approve", arguments: { note: "user version" } }),
+          ]),
+        ]),
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText("Approved.")).toBeTruthy();
+    expect(document.body.textContent).toContain("user version");
+    expect(document.body.textContent).not.toContain("model draft");
+  });
+
   const twoModels = {
     default: "openai:gpt-test",
     models: [

@@ -149,7 +149,7 @@ describe("approvals", () => {
     expect(log).toEqual(["send_email:edited"]);
     expect(data(run.id, "approval_decision")[0]).toMatchObject({ decision: "approve", arguments: { x: "edited" } });
     const told = model.requests[1]?.messages.at(-1);
-    expect(told?.role === "tool" && told.content).toMatch(/user edited your proposal.*this is what was saved.*sent/);
+    expect(told?.role === "tool" && told.content).toMatch(/user edited your proposal.*ran with their version.*sent/);
   });
 
   it("tells the model about a decline and does not run the tool", async () => {

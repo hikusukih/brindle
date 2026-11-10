@@ -728,7 +728,7 @@ function ChannelView({ id }: { id: string }) {
                     key={ev.seq}
                     tool={String(d.tool)}
                     reason={String(d.reason)}
-                    args={d.arguments}
+                    args={answer && parse(answer).arguments ? parse(answer).arguments : d.arguments}
                     editable={d.editable === true}
                     decision={answer ? String(parse(answer).decision) : null}
                     ended={run.status !== "running" && run.status !== "waiting"}

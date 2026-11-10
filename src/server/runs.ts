@@ -537,7 +537,7 @@ export class RunEngine {
                 });
                 // The model's own call still shows what it proposed, so say plainly that the user changed it.
                 if (edited)
-                  result = `The user edited your proposal before approving it, so this is what was saved, not what you proposed. ${result}`;
+                  result = `The user edited your proposal before approving it, so the call ran with their version, not yours. ${result}`;
               } catch (error) {
                 // A cancel or a limit during the tool is the run's to handle, not a tool failure.
                 if (controller.signal.aborted) throw controller.signal.reason;
