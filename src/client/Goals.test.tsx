@@ -45,6 +45,38 @@ describe("Goals screen", () => {
     expect(screen.queryByRole("list", { name: "Your goals" })).toBeNull();
   });
 
+  it("offers category buttons that draft their template into the edit form, creating nothing", async () => {
+    let drafted: unknown;
+    const calls = stubFetch({
+      "/api/goals": () => Response.json([]),
+      "/api/goals/options": () => Response.json({ schedulesAvailable: false }),
+      "/api/goals/draft": (_m, body) => {
+        drafted = body;
+        return Response.json({ title: "Keep a reading habit", brief: "Read most evenings.", schedule: null });
+      },
+    });
+    render(<GoalsScreen empty={empty} />);
+    const group = await screen.findByRole("group", { name: "Categories" });
+    expect(group.querySelectorAll("button").length).toBeGreaterThanOrEqual(5);
+    fireEvent.click(screen.getByRole("button", { name: "Interests" }));
+    const form = await screen.findByRole("form", { name: "New goal" });
+    expect((form.querySelector("input") as HTMLInputElement).value).toBe("Keep a reading habit");
+    expect(JSON.stringify(drafted)).toContain("my interests");
+    expect(calls.filter((c) => c.startsWith("POST /api/goals ")).length).toBe(0);
+  });
+
+  it("keeps a category's template in the box when it can't be drafted", async () => {
+    stubFetch({
+      "/api/goals": () => Response.json([]),
+      "/api/goals/options": () => Response.json({ schedulesAvailable: false }),
+      "/api/goals/draft": () => Response.json({ message: "No model is configured to draft with." }, { status: 503 }),
+    });
+    render(<GoalsScreen empty={empty} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Finance" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("No model is configured");
+    expect((screen.getByLabelText("Describe a goal") as HTMLTextAreaElement).value).toContain("my money");
+  });
+
   it("shows tiles that open the goal's channel, with the next run or that it is not scheduled", async () => {
     stubFetch({
       "/api/goals": () =>
