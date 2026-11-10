@@ -11,7 +11,13 @@ import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
-import { applyServerWindows, loadModelSettings, ModelSettingsStore } from "./model/settings.js";
+import {
+  applyServerWindows,
+  describeModelSettings,
+  loadModelSettings,
+  ModelSettingsStore,
+  updateModelSettings,
+} from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
@@ -60,6 +66,8 @@ await applyServerWindows(
   [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
   process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
 );
+const modelSettingsPath = join(dataDir, "model-settings.json");
+const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 const limitsFor = (spec: string | null): RunLimits => {
   const s = settings.forSpec(spec);
   return { ...defaultLimits, ...s };
@@ -107,6 +115,15 @@ const app = createApp({
   db,
   engine,
   // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
+  modelSettings: {
+    list: () =>
+      describeModelSettings(
+        settings,
+        models.list().map((m) => m.spec),
+        { baseUrl: localServer },
+      ),
+    update: (spec, patch) => updateModelSettings(settings, modelSettingsPath, spec, patch, { baseUrl: localServer }),
+  },
   models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
   artifacts,
   purpose,
