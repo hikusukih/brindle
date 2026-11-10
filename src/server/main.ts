@@ -7,6 +7,7 @@ import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
+import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
@@ -77,6 +78,11 @@ const purpose = new PurposeDrafter(db, (channelId) => {
     millis: 10 * 60_000,
   };
 });
+// No channel yet, so the utility model, else the default.
+const goalDrafter = new GoalDrafter(() => ({
+  model: models.resolveForChannel(utilitySpec ?? null),
+  millis: 10 * 60_000,
+}));
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
@@ -87,6 +93,7 @@ const app = createApp({
   models,
   artifacts,
   purpose,
+  goalDrafter,
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,
 });

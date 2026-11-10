@@ -9,7 +9,7 @@ import {
   restoreChannel,
 } from "./channels.js";
 import type { Db } from "./db/index.js";
-import { goals, runs, scopeStatements } from "./db/schema.js";
+import { goals, runs, schedules, scopeStatements } from "./db/schema.js";
 import type { RunEngine } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
 import {
@@ -22,6 +22,8 @@ import {
 
 export type Goal = typeof goals.$inferSelect;
 export type GoalWithBrief = Goal & { brief: GoalBrief };
+/** The list adds when the goal next runs, from its enabled schedules; null with none. */
+export type GoalSummary = GoalWithBrief & { nextRunAt: string | null };
 
 export class GoalError extends Error {
   constructor(
@@ -73,14 +75,19 @@ export function goalIdsByChannel(db: Db): Map<string, string> {
   );
 }
 
-export function listGoals(db: Db, opts: { archived?: boolean } = {}): GoalWithBrief[] {
+export function listGoals(db: Db, opts: { archived?: boolean } = {}): GoalSummary[] {
+  const next = new Map<string, string>();
+  for (const s of db.select().from(schedules).where(eq(schedules.enabled, true)).all()) {
+    const at = s.nextFireAt;
+    if (at && (!next.has(s.goalId) || at < (next.get(s.goalId) as string))) next.set(s.goalId, at);
+  }
   return db
     .select()
     .from(goals)
     .orderBy(desc(goals.updatedAt))
     .all()
     .filter((g) => (g.status === "archived") === (opts.archived ?? false))
-    .map((g) => withBrief(db, g));
+    .map((g) => ({ ...withBrief(db, g), nextRunAt: next.get(g.id) ?? null }));
 }
 
 /** Creates the goal, its channel (named for it) and the first version of the brief, all or nothing. */
