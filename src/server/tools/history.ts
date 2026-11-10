@@ -10,8 +10,16 @@ const around = 400;
 
 type Passage = { runId: string; startedAt: string; type: string; text: string };
 
-function textOf(type: string, data: string): string {
-  const d = JSON.parse(data) as Record<string, unknown>;
+/** One bad row must not hide the rest of the history. */
+function parse(data: string): Record<string, unknown> | null {
+  try {
+    return JSON.parse(data) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+function textOf(type: string, d: Record<string, unknown>): string {
   // A tool result is searched in the form the model saw, so a hit is what the model can quote.
   return String(type === "tool_result" ? (d.modelResult ?? d.result ?? "") : (d.text ?? ""));
 }
@@ -58,14 +66,25 @@ export function searchHistoryTool(db: Db): Tool {
           and(
             eq(runs.channelId, ctx.scope.id),
             ne(runs.id, ctx.runId),
-            inArray(events.type, ["message", "text", "tool_result"]),
+            inArray(events.type, ["message", "text", "tool_call", "tool_result"]),
           ),
         )
         .orderBy(desc(runs.startedAt), desc(events.seq))
         .all();
+      // A search's own result would otherwise match the next search first, under the search run's id.
+      const ownCalls = new Set<string>();
+      for (const row of rows) {
+        if (row.type !== "tool_call") continue;
+        const d = parse(row.data);
+        if (d?.name === "search_history") ownCalls.add(`${row.runId}:${String(d.id)}`);
+      }
       const found: Passage[] = [];
       for (const row of rows) {
-        const text = textOf(row.type, row.data);
+        if (row.type === "tool_call") continue;
+        const d = parse(row.data);
+        if (!d) continue;
+        if (row.type === "tool_result" && ownCalls.has(`${row.runId}:${String(d.id)}`)) continue;
+        const text = textOf(row.type, d);
         const at = text.toLowerCase().indexOf(needle);
         if (at < 0) continue;
         found.push({

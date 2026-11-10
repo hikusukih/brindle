@@ -44,6 +44,21 @@ describe("search_history", () => {
     expect(out.indexOf("run r2")).toBeLessThan(out.indexOf("run r1"));
   });
 
+  it("does not return an earlier search's own result, and skips a malformed row", async () => {
+    const { db, a, addRun, ctx } = setup();
+    addRun(a.id, "r1", "2026-01-01T00:00:00Z", [["message", { text: "My cat is Biscuit" }]]);
+    addRun(a.id, "r2", "2026-01-02T00:00:00Z", [
+      ["tool_call", { id: "c1", name: "search_history", arguments: { query: "biscuit" } }],
+      ["tool_result", { id: "c1", result: "--- run r1 | user\nMy cat is Biscuit" }],
+    ]);
+    db.insert(events)
+      .values({ id: "bad", runId: "r2", seq: 9, type: "text", data: "{not json", createdAt: "2026-01-02T00:00:00Z" })
+      .run();
+    const out = await searchHistoryTool(db).execute({ query: "biscuit", limit: 1 }, ctx(a.id));
+    expect(out).toContain("run r1");
+    expect(out).not.toContain("run r2");
+  });
+
   it("leaves out the current run, searches tool results, honors the limit and reports no match", async () => {
     const { db, a, addRun, ctx } = setup();
     addRun(a.id, "r1", "2026-01-01T00:00:00Z", [
