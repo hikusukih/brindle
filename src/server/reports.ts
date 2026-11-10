@@ -128,6 +128,10 @@ const templates = {
     title: "A scheduled run did not start",
     body: `The schedule for the goal "${a.goal ?? "unknown"}" did not start its run due at ${a.due ?? "an unknown time"}. It is not retried; the next occurrence runs as usual.`,
   }),
+  schedule_run_failed: (a: { goal?: string }) => ({
+    title: "A scheduled run failed",
+    body: `A scheduled run for the goal "${a.goal ?? "unknown"}" started and then failed. Its transcript has what happened before it stopped.`,
+  }),
   schedule_missed: (a: { goal?: string; due?: string }) => ({
     title: "A scheduled run was missed",
     body: `The schedule for the goal "${a.goal ?? "unknown"}" did not run at ${a.due ?? "an unknown time"} because the server was off, too busy or too late to catch up.`,
@@ -197,7 +201,7 @@ export function writeSystemReport(
   return row;
 }
 
-/** Called when any run ends: a run that stopped on a limit or failed writes a system report, and a scheduled run also writes its account. */
+/** Called when any run ends: a run that stopped on a limit, or a scheduled run that failed, writes a system report, and a scheduled run also writes its account. */
 export function reportRunEnded(db: Db, runId: string, now = new Date()): void {
   const run = db.select().from(runs).where(eq(runs.id, runId)).get();
   if (!run || run.status === "cancelled" || run.status === "running" || run.status === "waiting") return;
@@ -212,6 +216,23 @@ export function reportRunEnded(db: Db, runId: string, now = new Date()): void {
         scope,
         runId,
         args: { goal: goal?.title ?? "", limit: run.stopReason ?? "" },
+      },
+      now,
+    );
+  }
+  // The provider's error text is outside text, so a failed scheduled run gets a fixed template and nothing from the run.
+  if (
+    run.status === "failed" &&
+    db.select({ id: scheduleFires.id }).from(scheduleFires).where(eq(scheduleFires.runId, runId)).get()
+  ) {
+    writeSystemReport(
+      db,
+      {
+        template: "schedule_run_failed",
+        subject: `${scope.kind}:${scope.id}`,
+        scope,
+        runId,
+        args: { goal: goal?.title ?? "" },
       },
       now,
     );
