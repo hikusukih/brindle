@@ -29,7 +29,7 @@ describe("assembleContext", () => {
       past: [run("r1", 10)],
       current: [{ role: "user", content: "now" }],
       scopeStatement: { kind: "purpose", text: "Purpose: Rust" },
-      summary: "Earlier facts",
+      summary: { version: 1, text: "Earlier facts", runsFolded: 2 },
     });
     expect(messages.map((m) => m.role)).toEqual(["system", "system", "system", "user", "assistant", "user"]);
     expect(messages[1]?.content).toContain("Purpose: Rust");
