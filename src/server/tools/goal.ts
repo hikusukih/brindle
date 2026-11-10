@@ -55,6 +55,18 @@ export function proposeGoalTool(db: Db, scheduler: Scheduler): Tool {
       required: ["title", "brief"],
     },
     precheck: (args) => check(args),
+    revise(args, edits) {
+      const next: Record<string, unknown> = { ...args };
+      for (const key of ["title", "brief"] as const) if (key in edits) next[key] = edits[key];
+      // An absent or empty schedule removes it; the card's schedule fields are blank when there is none.
+      if ("schedule" in edits) {
+        const e = edits.schedule as { cron?: unknown; prompt?: unknown } | null;
+        if (!e || (typeof e.cron === "string" && !e.cron.trim())) delete next.schedule;
+        else next.schedule = e;
+      }
+      const problem = check(next);
+      return problem ? { error: problem.replace(/^Error: /, "") } : { args: next };
+    },
     describeCall(args) {
       const draft = readDraft(args);
       if (typeof draft === "string") return "Create a goal";
@@ -77,7 +89,10 @@ export function proposeGoalTool(db: Db, scheduler: Scheduler): Tool {
           return `Error: the goal was not created: ${(error as Error).message}`;
         }
       }
-      return `Created the goal "${goal.title}" (${goal.id}). Its channel has the same name.${draft.schedule ? " The schedule is set." : ""}`;
+      // Says what was saved, in full: the user may have edited the draft on the card, and the model must not go on
+      // describing the draft it proposed.
+      const when = draft.schedule ? `schedule ${draft.schedule.cron}: ${draft.schedule.prompt}` : "no schedule";
+      return `Created the goal "${goal.title}" (${goal.id}). Its channel has the same name. Saved brief: ${draft.brief}. Saved ${when}.`;
     },
   };
 }

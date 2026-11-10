@@ -333,6 +333,69 @@ describe("channel view", () => {
     await waitFor(() => expect(calls).toContain("POST /api/runs/r1/approvals/k1"));
   });
 
+  it("shows a proposed goal's fields on its card and sends only what the user changed", async () => {
+    window.location.hash = "#/channels/c1";
+    let sent: unknown;
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("waiting", null, [
+            event(1, "message", { text: "keep me on track" }),
+            event(2, "approval_request", {
+              callId: "k1",
+              tool: "propose_goal",
+              editable: true,
+              reason: 'Create the goal "Learn Rust"',
+              arguments: {
+                title: "Learn Rust",
+                brief: "Read the book.",
+                schedule: { cron: "0 19 * * 1-5", prompt: "Lesson." },
+              },
+            }),
+          ]),
+        ]),
+      "/api/runs/r1/approvals/k1": (_m, body) => {
+        sent = body;
+        return Response.json({});
+      },
+    });
+    render(<ChannelsScreen />);
+    const brief = (await screen.findByLabelText("Brief")) as HTMLTextAreaElement;
+    expect(brief.value).toBe("Read the book.");
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Learn Rust");
+    fireEvent.change(brief, { target: { value: "Finish chapters 1 to 5." } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(sent).toEqual({ decision: "approve", edits: { brief: "Finish chapters 1 to 5." } }));
+  });
+
+  it("approves an unchanged goal card without edits", async () => {
+    window.location.hash = "#/channels/c1";
+    let sent: unknown;
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("waiting", null, [
+            event(1, "approval_request", {
+              callId: "k1",
+              tool: "propose_goal",
+              editable: true,
+              reason: "Create the goal",
+              arguments: { title: "Learn Rust", brief: "Read the book." },
+            }),
+          ]),
+        ]),
+      "/api/runs/r1/approvals/k1": (_m, body) => {
+        sent = body;
+        return Response.json({});
+      },
+    });
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(sent).toEqual({ decision: "approve" }));
+  });
+
   it("shows a settled approval as answered, without buttons", async () => {
     window.location.hash = "#/channels/c1";
     stubFetch({
