@@ -1,0 +1,38 @@
+{
+  "name": "goal-draft-with-too-frequent-schedule-is-refused-before-a-card",
+  "description": "A goal draft whose schedule fires every minute is sent back to the model before any card is shown.",
+  "proposeGoal": true,
+  "messages": ["Make a goal that checks the news every minute."],
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_goal",
+            "arguments": {
+              "title": "News",
+              "brief": "Watch the news.",
+              "schedule": {
+                "cron": "* * * * *",
+                "prompt": "Check the news."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "text": ["That is too often; the shortest gap is 15 minutes."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "goals": 0,
+      "schedules": 0,
+      "toolResultIncludes": ["Error: that would fire more than once every 15 minutes."],
+      "eventTypes": ["message", "tool_call", "tool_result", "text"]
+    }
+  ]
+}
