@@ -4,8 +4,9 @@ import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
 import { createChannel } from "../src/server/channels.js";
+import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events, goals, schedules } from "../src/server/db/schema.js";
+import { artifacts, events, goals, schedules, summaries } from "../src/server/db/schema.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
 import { effectFor, mcpTool } from "../src/server/mcp/index.js";
@@ -36,6 +37,12 @@ export type RunExpectation = {
   executed?: string[];
   /** Whether the first tool result was cut for the model. */
   toolResultTruncated?: boolean;
+  /** How many summary versions exist after this run, once any fold has finished. Scripted mode only. */
+  summaryVersions?: number;
+  /** Every string must appear in the channel's latest summary. Holds for a real utility model too. */
+  summaryIncludes?: string[];
+  /** Every string must appear in the messages of this run's last request: a fact reached the model, from the summary or the history. */
+  contextIncludes?: string[];
   /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
   schedules?: number;
   /** How many goals exist after this run. Holds against a real model too. */
@@ -77,6 +84,8 @@ export type Scenario = {
   messages: string[];
   script: ScriptedFixture;
   limits?: Partial<RunLimits>;
+  /** Turns on rolling compaction with a scripted utility model (or the live model, in live mode). */
+  compaction?: { script: ScriptedFixture };
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
@@ -163,6 +172,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     live ?? new ScriptedModel(scenario.script),
     { ...defaultLimits, ...scenario.limits },
     tools,
+    scenario.compaction ? { utilityModel: live ?? new ScriptedModel(scenario.compaction.script) } : undefined,
   );
   const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
   const failures: string[] = [];
@@ -206,6 +216,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       }
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
+    await engine.whenCompacted(channel.id);
     const done = engine.get(run.id);
     const stored = db.select().from(events).where(eq(events.runId, run.id)).orderBy(events.seq).all();
 
@@ -234,6 +245,23 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       failures.push(
         `${label}: first tool result truncated was ${results[0]?.truncated}, expected ${want.toolResultTruncated}`,
       );
+    }
+    const summaryRows = db.select().from(summaries).orderBy(summaries.version).all();
+    if (!live && want.summaryVersions !== undefined && summaryRows.length !== want.summaryVersions) {
+      failures.push(`${label}: ${summaryRows.length} summary version(s) exist, expected ${want.summaryVersions}`);
+    }
+    for (const needle of want.summaryIncludes ?? []) {
+      if (!summaryRows.at(-1)?.text.includes(needle)) failures.push(`${label}: latest summary lacks "${needle}"`);
+    }
+    if (want.contextIncludes) {
+      const sent = runContext(db, run.id)
+        .filter((c) => c.messages)
+        .at(-1)
+        ?.messages?.map((m) => m.content)
+        .join("\n");
+      for (const needle of want.contextIncludes) {
+        if (!sent?.includes(needle)) failures.push(`${label}: the request lacks "${needle}"`);
+      }
     }
     if (want.goals !== undefined) {
       const count = db.select().from(goals).all().length;
