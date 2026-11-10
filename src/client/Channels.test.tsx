@@ -364,11 +364,22 @@ describe("channel view", () => {
       "/api/models": () => Response.json(twoModels),
       "/api/channels": () => Response.json([channel("c1", "Plans")]),
       "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/model-settings": () =>
+        Response.json({
+          model: "openai:gpt-test",
+          contextWindow: 8192,
+          maxSteps: 10,
+          maxTokens: 100000,
+          maxMillis: 300000,
+        }),
       "/api/channels/c1/model": (_m, body) =>
         Response.json({ ...channel("c1", "Plans"), model: (body as { model: string | null }).model }),
     });
     render(<ChannelsScreen />);
     expect(await screen.findByText("Model: openai:gpt-test (default)")).toBeTruthy();
+    expect(
+      await screen.findByText(/Window 8,192 tokens · up to 10 steps, 100,000 tokens and 5 min per run/),
+    ).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "Model for this channel" })).toBeNull();
 
     fireEvent.change(await screen.findByLabelText("Model for this channel"), {

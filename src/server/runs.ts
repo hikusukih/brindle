@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import { asc, eq, inArray } from "drizzle-orm";
 import { getChannel } from "./channels.js";
+import { defaultHousekeepingMillis, foldIfNeeded, historyShare, latestSummary, modelSummarizer } from "./compaction.js";
 import {
   assembleContext,
   ContextOverflow,
   defaultContextWindow,
   fingerprint,
+  harnessInstructions,
   type PastRun,
   previousRequest,
   recordContext,
@@ -27,8 +29,10 @@ export type RunLimits = {
   /** Input plus output tokens summed over the run. */
   maxTokens: number;
   maxMillis: number;
-  /** The model's context window in tokens; a per-model setting arrives later. */
+  /** The model's context window in tokens. */
   contextWindow: number;
+  /** The spec these numbers belong to, named in each context report; absent: "default". */
+  model?: string;
   /** How long a run may wait for an approval before it ends as "approval not given". */
   approvalMillis: number;
 };
@@ -147,8 +151,11 @@ export class RunEngine {
   constructor(
     private readonly db: Db,
     private readonly model: ModelSource,
-    private readonly limits: RunLimits = defaultLimits,
+    // One set for every channel, or a function that picks by the channel's model spec (null: the default model).
+    private readonly limitSource: RunLimits | ((spec: string | null) => RunLimits) = defaultLimits,
     private readonly tools: ToolRegistry = new ToolRegistry(),
+    /** Housekeeping: rolling compaction runs on the utility model after a run ends. Absent: history is never folded. */
+    private readonly compaction?: { utilityModel: ModelSource; housekeepingMillis?: number },
   ) {}
 
   private today(): string | undefined {
@@ -276,6 +283,10 @@ export class RunEngine {
     this.settled.set(run.id, this.loop(run.id, run.channelId, model, past, current, controller, resume));
   }
 
+  private limitsFor(spec: string | null): RunLimits {
+    return typeof this.limitSource === "function" ? this.limitSource(spec) : this.limitSource;
+  }
+
   private modelFor(spec: string | null): ModelAdapter {
     try {
       return typeof this.model === "function" ? this.model(spec) : this.model;
@@ -322,6 +333,10 @@ export class RunEngine {
       .orderBy(asc(runs.startedAt))
       .all()
       .filter((r) => r.id !== exceptRunId);
+    // Runs a summary covers stay in the transcript but are not sent as history.
+    const through = latestSummary(this.db, channelId)?.throughRunId;
+    const foldedCount = through ? channelRuns.findIndex((r) => r.id === through) + 1 : 0;
+    channelRuns.splice(0, foldedCount);
     if (!channelRuns.length) return [];
     const rows = this.db
       .select()
@@ -351,7 +366,8 @@ export class RunEngine {
     controller: AbortController,
     resume?: Resume,
   ): Promise<void> {
-    const { maxSteps, maxTokens, maxMillis } = this.limits;
+    const limits = this.limitsFor(getChannel(this.db, channelId).model);
+    const { maxSteps, maxTokens, maxMillis } = limits;
     const state: LiveRun = { decisions: new Map(resume?.decisions), waiters: new Map() };
     this.live.set(runId, state);
     const requested = new Set(resume?.requested);
@@ -389,12 +405,13 @@ export class RunEngine {
             assembled = assembleContext({
               past,
               current: messages,
-              window: this.limits.contextWindow,
+              window: limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
               scopeStatement: scopeStatementFor(this.db, channelId),
-              model: getChannel(this.db, channelId).model ?? "default",
+              model: limits.model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
+              summary: this.summaryFor(channelId),
               today: this.today(),
             });
           } catch (error) {
@@ -526,7 +543,7 @@ export class RunEngine {
   /** Resolves when the user answers the call; rejects with the abort reason on cancel or when the wait runs out. */
   private awaitDecision(callId: string, state: LiveRun, controller: AbortController): Promise<void> {
     const signal = controller.signal;
-    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limits.approvalMillis);
+    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limitsFor(null).approvalMillis);
     return new Promise<void>((resolve, reject) => {
       const onAbort = () => reject(signal.reason);
       if (signal.aborted) return onAbort();
@@ -586,6 +603,60 @@ export class RunEngine {
         // The hook is housekeeping; the run is already finished.
       }
     }
+    if (this.compaction) this.startFold(this.get(runId).channelId);
+  }
+
+  private summaryFor(channelId: string) {
+    const row = latestSummary(this.db, channelId);
+    if (!row) return undefined;
+    const ids = this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(eq(runs.channelId, channelId))
+      .orderBy(asc(runs.startedAt))
+      .all();
+    const runsFolded = row.throughRunId ? ids.findIndex((r) => r.id === row.throughRunId) + 1 : 0;
+    return { version: row.version, text: row.text, runsFolded };
+  }
+
+  private readonly folding = new Map<string, Promise<void>>();
+
+  /** Resolves once the channel's fold, if one is going, has ended; tests use it instead of sleeping. */
+  whenCompacted(channelId: string): Promise<void> {
+    return this.folding.get(channelId) ?? Promise.resolve();
+  }
+
+  /** One fold at a time per channel, started after a run ends so no message waits on it. Failures change nothing. */
+  private startFold(channelId: string) {
+    if (!this.compaction || this.folding.has(channelId)) return;
+    const { utilityModel, housekeepingMillis = defaultHousekeepingMillis } = this.compaction;
+    const task = (async () => {
+      try {
+        const spec = getChannel(this.db, channelId).model;
+        const model = typeof utilityModel === "function" ? utilityModel(spec) : utilityModel;
+        const unfolded = this.history(channelId);
+        const summary = latestSummary(this.db, channelId);
+        const share = historyShare(
+          this.limits.contextWindow,
+          summary ? estimateTokens(summary.text) : 0,
+          estimateTokens(harnessInstructions),
+          // The same tool definitions assembly subtracts, so the fold's lines are taken of the share layer 4 really gets.
+          this.tools.size ? estimateTokens(JSON.stringify(this.tools.definitions())) : 0,
+        );
+        const result = await foldIfNeeded(this.db, channelId, unfolded, {
+          share,
+          summarize: modelSummarizer(model),
+          signal: AbortSignal.timeout(housekeepingMillis),
+        });
+        if (!result.folded && result.reason === "failed")
+          console.warn(`Compaction failed for ${channelId}: ${result.detail}`);
+      } catch (error) {
+        console.warn(`Compaction failed for ${channelId}: ${(error as Error).message}`);
+      } finally {
+        this.folding.delete(channelId);
+      }
+    })();
+    this.folding.set(channelId, task);
   }
 }
 

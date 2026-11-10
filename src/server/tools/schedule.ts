@@ -1,11 +1,9 @@
 import { eq } from "drizzle-orm";
 import type { Db } from "../db/index.js";
 import { goals, schedules } from "../db/schema.js";
-import type { Scheduler } from "../scheduler.js";
+import { firesTooOften, type Scheduler } from "../scheduler.js";
 import type { Tool } from "./registry.js";
 
-// A schedule that fires more often than this is almost certainly a mistake, and every fire is a model run.
-const minGapMillis = 15 * 60_000;
 const maxPerGoal = 10;
 
 /** Why a cron expression can't be proposed (it doesn't parse, or fires more often than every 15 minutes), or null. */
@@ -16,9 +14,7 @@ export function cronProblem(scheduler: Scheduler, cron: string): string | null {
   } catch (error) {
     return `Error: ${(error as Error).message} Use five fields: minute hour day-of-month month day-of-week.`;
   }
-  // The first gap alone can be a long one (":00 and :10" asked at :11), so look across several.
-  const gaps = next.slice(1).map((d, i) => d.getTime() - (next[i] as Date).getTime());
-  if (gaps.some((gap) => gap < minGapMillis))
+  if (firesTooOften(next))
     return "Error: that would fire more than once every 15 minutes. Propose a less frequent schedule.";
   return null;
 }
