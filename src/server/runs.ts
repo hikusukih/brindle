@@ -672,7 +672,7 @@ export class RunEngine {
         const unfolded = this.history(channelId);
         const summary = latestSummary(this.db, channelId);
         const share = historyShare(
-          this.limits.contextWindow,
+          this.limitsFor(spec).contextWindow,
           summary ? estimateTokens(summary.text) : 0,
           estimateTokens(harnessInstructions),
           // The same tool definitions assembly subtracts, so the fold's lines are taken of the share layer 4 really gets.
