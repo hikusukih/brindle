@@ -12,6 +12,8 @@ export type BranchInfo = {
   fromChannelId: string;
   fromChannelName: string;
   fromRunId: string;
+  /** The run's place in the source channel, counted from 1, so the note can say which run it was. */
+  fromRunNumber?: number;
   /** False when the seed call failed: the channel is empty and says so. */
   seeded: boolean;
   /** The source's summary as refreshed for this seed, kept for the debug view only; null when no run had finished since the last fold. */
@@ -81,14 +83,14 @@ export async function branchChannel(
   const source = getChannel(db, sourceId);
   if (source.archivedAt) throw new ChannelError("archived", "Restore the channel before branching it.");
   if (db.select().from(goals).where(eq(goals.channelId, sourceId)).get())
-    throw new ChannelError("invalid_name", "A goal's channel can't be branched.");
+    throw new ChannelError("goal_channel", "A goal's channel can't be branched.");
   const run = db
     .select()
     .from(runs)
     .where(and(eq(runs.id, runId), eq(runs.channelId, sourceId)))
     .get();
   if (!run) throw new ChannelError("not_found", "No such run in this channel.");
-  if (run.status !== "done") throw new ChannelError("not_found", "Only a finished run can be branched from.");
+  if (run.status !== "done") throw new ChannelError("run_unfinished", "Only a finished run can be branched from.");
 
   const name = typeof options.name === "string" && options.name.trim() ? options.name.trim() : defaultName(source.name);
   if (name.length > 120) throw new ChannelError("invalid_name", "A channel name is 1 to 120 characters.");
@@ -114,10 +116,11 @@ export async function branchChannel(
         .all();
       const from = latest?.throughRunId ? all.findIndex((r) => r.id === latest.throughRunId) + 1 : 0;
       const since = all.slice(from).filter((r) => r.id !== run.id);
-      if (latest && since.length) {
+      // With no fold yet every other finished run counts, so a channel below its first fold still carries them over.
+      if (since.length) {
         refreshed = (
           await summarizeWithinCap(options.summarize, {
-            previous: latest.text,
+            previous: latest?.text ?? null,
             runs: foldable(
               db,
               since.map((r) => r.id),
@@ -152,6 +155,14 @@ export async function branchChannel(
     fromChannelId: source.id,
     fromChannelName: source.name,
     fromRunId: run.id,
+    fromRunNumber:
+      db
+        .select({ id: runs.id })
+        .from(runs)
+        .where(eq(runs.channelId, sourceId))
+        .orderBy(asc(runs.startedAt))
+        .all()
+        .findIndex((r) => r.id === run.id) + 1,
     seeded: seed !== null,
     refreshed,
   };

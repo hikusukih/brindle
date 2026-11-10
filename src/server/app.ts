@@ -118,7 +118,12 @@ export function createApp({
   app.onError((err, c) => {
     if (err instanceof TimeZoneError) return c.json({ error: "invalid_time_zone", message: err.message }, 400);
     if (err instanceof ChannelError) {
-      const status = err.code === "not_found" ? 404 : err.code === "archived" ? 409 : 400;
+      const status =
+        err.code === "not_found"
+          ? 404
+          : err.code === "archived" || err.code === "goal_channel" || err.code === "run_unfinished"
+            ? 409
+            : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     if (err instanceof GoalError || err instanceof ScopeStatementError) {

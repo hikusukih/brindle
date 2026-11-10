@@ -136,6 +136,42 @@ describe("a goal's channel", () => {
     expect(body).toEqual({ runId: "r1" });
   });
 
+  it("shows that the seed is being written and does not branch twice on a second tap", async () => {
+    let posts = 0;
+    let finish: (r: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    const run = {
+      id: "r1",
+      channelId: "c1",
+      status: "done",
+      stopReason: null,
+      startedAt: stamp,
+      endedAt: stamp,
+      events: [],
+    };
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([run]),
+      "/api/channels/c1/branch": () => {
+        posts++;
+        return pending as unknown as Response; // the stub resolves whatever it is given
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    render(<ChannelsScreen />);
+    const button = await screen.findByRole("button", { name: "New channel from here" });
+    fireEvent.click(button);
+    expect(await screen.findByText(/Writing the new channel's summary/)).toBeTruthy();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(posts).toBe(1);
+    finish(Response.json({ ...channel("c2", "From Plans"), branch: null }, { status: 201 }));
+    await waitFor(() => expect(window.location.hash).toBe("#/channels/c2"));
+  });
+
   it("pins the goal's brief at the top of the channel", async () => {
     stubFetch(goalRoutes());
     window.location.hash = "#/channels/g1";

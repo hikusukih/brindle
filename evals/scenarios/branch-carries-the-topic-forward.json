@@ -16,7 +16,12 @@
   },
   "branch": {
     "fromRun": 2,
-    "script": { "turns": [{ "text": ["Trip to Lisbon. Budget: 500 dollars. By train."] }] },
+    "script": {
+      "turns": [
+        { "text": ["Source so far: a Lisbon trip, and a side question about the garden."] },
+        { "text": ["Trip to Lisbon. Budget: 500 dollars. By train."] }
+      ]
+    },
     "followUp": "What was the budget?",
     "contextIncludes": ["Budget: 500 dollars", "By train"]
   },

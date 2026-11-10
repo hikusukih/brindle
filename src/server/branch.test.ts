@@ -52,10 +52,14 @@ describe("New channel from here", () => {
     });
     const [seed] = db.select().from(summaries).where(eq(summaries.channelId, channel.id)).all();
     expect(seed).toMatchObject({ version: 0, throughRunId: null, text: "Seed: Lisbon trip, budget 500 dollars." });
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.focus).toContain(ids[1]);
-    expect(JSON.stringify(calls[0]?.runs)).toContain("Budget is 500 dollars.");
-    expect(JSON.stringify(calls[0]?.runs)).not.toContain("garden");
+    // No fold yet, so the other finished runs are summarized first and that text reaches the seed call.
+    expect(calls).toHaveLength(2);
+    expect(calls[0]?.previous).toBeNull();
+    expect(JSON.stringify(calls[0]?.runs)).toContain("garden");
+    expect(calls[1]?.focus).toContain(ids[1]);
+    expect(JSON.stringify(calls[1]?.runs)).toContain("Budget is 500 dollars.");
+    expect(JSON.stringify(calls[1]?.runs)).toContain("Seed: Lisbon trip, budget 500 dollars.");
+    expect(branchOf(channel)).toMatchObject({ fromRunNumber: 2 });
     expect(drafted).toEqual(["Seed: Lisbon trip, budget 500 dollars."]);
     expect(channelTranscript(db, source.id)).toHaveLength(3);
     expect(channelTranscript(db, channel.id)).toHaveLength(0);
@@ -108,7 +112,11 @@ describe("New channel from here", () => {
   it("asks once to shorten an over-cap seed", async () => {
     const { db, source, ids } = await setup();
     const replies = ["x".repeat(summaryCapTokens * 4 + 40), "Short seed."];
-    const summarize: Summarize = async () => ({ text: replies.shift() ?? "", tokensUsed: 1 });
+    // The first call refreshes the source (no fold yet); only the seed call, which has a focus, gets the replies.
+    const summarize: Summarize = async (input) => ({
+      text: input.focus ? (replies.shift() ?? "") : "Refresh.",
+      tokensUsed: 1,
+    });
     const c = await branchChannel(db, source.id, ids[0] as string, { summarize });
     expect(db.select().from(summaries).where(eq(summaries.channelId, c.id)).get()?.text).toBe("Short seed.");
   });
