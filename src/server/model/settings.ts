@@ -104,6 +104,10 @@ export class ModelSettingsStore {
     this.windows.set(spec, window);
   }
 
+  hasServerWindow(spec: string): boolean {
+    return this.windows.has(spec);
+  }
+
   configuredWindow(spec: string): number | undefined {
     return this.file[spec]?.contextWindow;
   }

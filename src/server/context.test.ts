@@ -107,6 +107,23 @@ describe("assembleContext", () => {
     expect(assembleContext({ ...base, model: "a", toolSet: "t1", previous: legacy }).report.breaks).toEqual([]);
   });
 
+  it("brings back runs dropped under a smaller window once the model changes to one with room", () => {
+    const past = ["r1", "r2", "r3", "r4"].map((id) => run(id, 1_000));
+    const current = [{ role: "user" as const, content: "hi" }];
+    // Window 8,000: a 4,000 reply reserve leaves about 3,600 tokens, room for three of the four runs, so a drop keeps only the newest.
+    const small = assembleContext({ past, current, window: 8_000, model: "small", toolSet: "t" }).report;
+    expect(small.runsDropped).toBeGreaterThan(0);
+    const same = assembleContext({ past, current, window: 8_000, model: "small", toolSet: "t", previous: small });
+    expect(same.report.firstRunId).toBe(small.firstRunId);
+    // The same smaller start sticks while the model is the same, even if the window grew, which is the old rule.
+    const grown = assembleContext({ past, current, window: 64_000, model: "small", toolSet: "t", previous: small });
+    expect(grown.report.firstRunId).toBe(small.firstRunId);
+    const bigger = assembleContext({ past, current, window: 64_000, model: "big", toolSet: "t", previous: small });
+    expect(bigger.report.breaks).toEqual(["model_change"]);
+    expect(bigger.report.firstRunId).toBe("r1");
+    expect(bigger.report.runsDropped).toBe(0);
+  });
+
   it("records which version of the scope statement a request used, or null for none", () => {
     const base = { past: [], current: [{ role: "user" as const, content: "hi" }], model: "a", toolSet: "t" };
     expect(assembleContext(base).report.statementVersion).toBeNull();

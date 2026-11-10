@@ -60,6 +60,12 @@ await applyServerWindows(
   [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
   process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
 );
+const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
+// A model chosen later, for one channel or as the default, gets its server's window asked for the first time it is used.
+const prepareModel = async (spec: string) => {
+  if (settings.hasServerWindow(spec)) return;
+  await applyServerWindows(settings, [spec], localServer);
+};
 const limitsFor = (spec: string | null): RunLimits => {
   const s = settings.forSpec(spec);
   return { ...defaultLimits, ...s };
@@ -107,7 +113,7 @@ const app = createApp({
   db,
   engine,
   // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
-  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
+  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec), prepare: prepareModel }),
   artifacts,
   purpose,
   goalDrafter,

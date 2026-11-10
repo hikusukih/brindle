@@ -27,6 +27,39 @@ const post = (app: ReturnType<typeof createApp>, path: string, body: unknown) =>
     body: JSON.stringify(body),
   });
 
+describe("asking a server for a window when a model is chosen", () => {
+  it("prepares a model before a channel or the default uses it, and refuses with the server's message when it can't", async () => {
+    const db = openDatabase(":memory:");
+    const models = modelRegistry({ BRINDLE_MODEL: "scripted", BRINDLE_SCRIPTED_FIXTURE: "x" }, fixture);
+    const prepared: string[] = [];
+    let refuse = false;
+    const app = createApp({
+      db,
+      engine: new RunEngine(db, (spec) => models.resolveForChannel(spec)),
+      models: Object.assign(models, {
+        prepare: async (spec: string) => {
+          prepared.push(spec);
+          if (refuse) throw new Error("scripted: the configured contextWindow (9) is larger than the server's (4).");
+        },
+      }),
+    });
+    const channel = createChannel(db, "Test");
+    expect((await post(app, `/api/channels/${channel.id}/model`, { model: "scripted" })).status).toBe(200);
+    expect(prepared).toEqual(["scripted"]);
+    refuse = true;
+    const res = await post(app, `/api/channels/${channel.id}/model`, { model: "scripted" });
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain("larger than the server");
+    const put = await app.request("/api/settings/default-model", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model: "scripted" }),
+    });
+    expect(put.status).toBe(400);
+    expect(prepared).toEqual(["scripted", "scripted", "scripted"]);
+  });
+});
+
 describe("per-channel model", () => {
   it("reports the default and stores a channel's own choice", async () => {
     const { app, channel } = setup({
