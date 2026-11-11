@@ -60,6 +60,29 @@ describe("propose_goal", () => {
     expect(db.select().from(schedules).all()).toEqual([]);
   });
 
+  it("revises the draft from the user's edits, checked like any draft, and an empty schedule removes it", () => {
+    const { tool } = setup();
+    expect(tool.revise?.(draft, { brief: "Finish chapters 1 to 5." })).toEqual({
+      args: { ...draft, brief: "Finish chapters 1 to 5." },
+    });
+    const noSchedule = tool.revise?.(draft, { schedule: { cron: " ", prompt: "" } });
+    expect(noSchedule && "args" in noSchedule && noSchedule.args).toEqual({
+      title: "Learn Rust",
+      brief: "Finish the book.",
+    });
+    expect(tool.revise?.(draft, { title: "" })).toMatchObject({ error: expect.stringMatching(/title/) });
+    expect(tool.revise?.(draft, { schedule: { cron: "*/5 * * * *", prompt: "p" } })).toMatchObject({
+      error: expect.stringMatching(/15 minutes/),
+    });
+  });
+
+  it("says in full what was saved, so an edited draft isn't described as proposed", async () => {
+    const { tool, ctx } = setup();
+    const result = await tool.execute({ ...draft, brief: "Edited brief." }, ctx);
+    expect(result).toContain("Saved brief: Edited brief.");
+    expect(result).toContain("Saved schedule 0 19 * * 1-5: Tonight's lesson.");
+  });
+
   it("sends a bad draft back before any card", () => {
     const { tool, ctx } = setup();
     expect(tool.precheck?.({ title: " ", brief: "x" }, ctx)).toMatch(/title/);
