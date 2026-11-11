@@ -122,7 +122,10 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
     layers.push({ name: "scope_statement", tokens: estimateTokens(text), budget: kind === "purpose" ? 300 : 500 });
   }
   if (input.summary) {
-    head.push({ role: "system", content: `Summary of the earlier conversation:\n${input.summary.text}` });
+    head.push({
+      role: "system",
+      content: `Summary of the earlier conversation (search_history finds the exact words):\n${input.summary.text}`,
+    });
     layers.push({ name: "summary", tokens: estimateTokens(input.summary.text), budget: 2_000 });
   }
   const dateMessages: Message[] = input.today ? [{ role: "system", content: input.today }] : [];
