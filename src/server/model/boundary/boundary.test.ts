@@ -13,7 +13,7 @@ import { FakeLlamaServer } from "./fake-llama.js";
  * The model boundary: the same cases against any OpenAI-compatible server named by BRINDLE_BOUNDARY_URL (the base URL up
  * to and including /v1), or against the fake llama.cpp server in this folder, which is the default so CI runs them on
  * every PR. Cases that need the fake's controls (a stall, exact token counts) are skipped against a real server.
- * Against a real server the suite also prints a report of read speed, reply speed and cache reuse per case.
+ * Against a real server the suite also prints a report of read and reply speed for the token-count case; cache reuse per case is P2.10c.
  */
 const realUrl = process.env.BRINDLE_BOUNDARY_URL;
 const fake = realUrl ? undefined : new FakeLlamaServer({ nCtx: 8_000 });
