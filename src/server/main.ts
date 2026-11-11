@@ -5,13 +5,13 @@ import { serve } from "@hono/node-server";
 import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
-import { getChannel } from "./channels.js";
+import { getChannel, listChannels } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
-import { applyServerWindows, loadModelSettings, ModelSettingsStore } from "./model/settings.js";
+import { applyServerWindows, loadModelSettings, ModelSettingsStore, makePrepareModel } from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
@@ -57,15 +57,18 @@ const settings = new ModelSettingsStore(
 );
 await applyServerWindows(
   settings,
-  [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
+  // Channels' stored models too: after a restart they would otherwise run on the default numbers until re-picked.
+  [
+    ...settings.specs(),
+    ...(models.defaultSpec ? [models.defaultSpec] : []),
+    ...listChannels(db, { archived: true }).flatMap((c) => (c.model ? [c.model] : [])),
+    ...listChannels(db).flatMap((c) => (c.model ? [c.model] : [])),
+  ],
   process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
 );
 const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 // A model chosen later, for one channel or as the default, gets its server's window asked for the first time it is used.
-const prepareModel = async (spec: string) => {
-  if (settings.hasServerWindow(spec)) return;
-  await applyServerWindows(settings, [spec], localServer);
-};
+const prepareModel = makePrepareModel(settings, localServer);
 const limitsFor = (spec: string | null): RunLimits => {
   const s = settings.forSpec(spec);
   return { ...defaultLimits, ...s };

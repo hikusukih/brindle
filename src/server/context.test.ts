@@ -110,7 +110,7 @@ describe("assembleContext", () => {
   it("brings back runs dropped under a smaller window once the model changes to one with room", () => {
     const past = ["r1", "r2", "r3", "r4"].map((id) => run(id, 1_000));
     const current = [{ role: "user" as const, content: "hi" }];
-    // Window 8,000: a 4,000 reply reserve leaves about 3,600 tokens, room for three of the four runs, so a drop keeps only the newest.
+    // Window 8,000 leaves too little room for all four runs, so some are dropped.
     const small = assembleContext({ past, current, window: 8_000, model: "small", toolSet: "t" }).report;
     expect(small.runsDropped).toBeGreaterThan(0);
     const same = assembleContext({ past, current, window: 8_000, model: "small", toolSet: "t", previous: small });

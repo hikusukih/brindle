@@ -167,3 +167,18 @@ export async function applyServerWindows(
     store.setServerWindow(spec, server);
   }
 }
+
+/**
+ * Asks for a model's window the first time it is used, then remembers it. Returned as a function so the wiring
+ * (skip what is known, ask for the rest) can be tested apart from main.ts.
+ */
+export function makePrepareModel(
+  store: ModelSettingsStore,
+  baseUrl: string | undefined,
+  fetchFn: typeof fetch = fetch,
+) {
+  return async (spec: string) => {
+    if (store.hasServerWindow(spec)) return;
+    await applyServerWindows(store, [spec], baseUrl, fetchFn);
+  };
+}
