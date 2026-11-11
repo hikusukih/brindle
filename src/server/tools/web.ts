@@ -14,31 +14,64 @@ const maxBytes = 2_000_000;
 const maxRedirects = 5;
 const timeoutMs = 15_000;
 
-function privateAddress(address: string): boolean {
-  const v4 = address.match(/^(?:::ffff:)?(\d+)\.(\d+)\.(\d+)\.(\d+)$/i);
-  if (v4) {
-    const [a = 0, b = 0] = [Number(v4[1]), Number(v4[2])];
-    return (
-      a === 0 ||
-      a === 10 ||
-      a === 127 ||
-      (a === 169 && b === 254) ||
-      (a === 172 && b >= 16 && b <= 31) ||
-      (a === 192 && b === 168) ||
-      (a === 100 && b >= 64 && b <= 127) ||
-      a >= 224
-    );
-  }
-  const v6 = address.toLowerCase();
+function privateV4(a: number, b: number): boolean {
   return (
-    v6 === "::" ||
-    v6 === "::1" ||
-    v6.startsWith("fc") ||
-    v6.startsWith("fd") ||
-    v6.startsWith("fe8") ||
-    v6.startsWith("fe9") ||
-    v6.startsWith("fea") ||
-    v6.startsWith("feb")
+    a === 0 ||
+    a === 10 ||
+    a === 127 ||
+    (a === 169 && b === 254) ||
+    (a === 172 && b >= 16 && b <= 31) ||
+    (a === 192 && b === 168) ||
+    (a === 100 && b >= 64 && b <= 127) ||
+    a >= 224
+  );
+}
+
+/** The eight 16-bit groups of an IPv6 address, or null if it isn't one. A dotted IPv4 tail counts as two groups. */
+function ipv6Groups(address: string): number[] | null {
+  let text = address.toLowerCase().split("%")[0] ?? "";
+  const tail = text.match(/^(.*:)(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (tail) {
+    const q = tail.slice(2).map(Number);
+    if (q.some((n) => n > 255)) return null;
+    text = `${tail[1]}${((q[0] ?? 0) * 256 + (q[1] ?? 0)).toString(16)}:${((q[2] ?? 0) * 256 + (q[3] ?? 0)).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const part = (h: string) => (h === "" ? [] : h.split(":"));
+  const head = part(halves[0] ?? "");
+  const rest = halves.length === 2 ? part(halves[1] ?? "") : [];
+  const missing = 8 - head.length - rest.length;
+  if (halves.length === 1 ? missing !== 0 : missing < 1) return null;
+  const all = [...head, ...Array(halves.length === 2 ? missing : 0).fill("0"), ...rest];
+  if (all.some((g) => !/^[0-9a-f]{1,4}$/.test(g))) return null;
+  return all.map((g) => Number.parseInt(g, 16));
+}
+
+function privateAddress(address: string): boolean {
+  const v4 = address.match(/^(\d+)\.(\d+)\.(\d+)\.(\d+)$/);
+  if (v4) return privateV4(Number(v4[1]), Number(v4[2]));
+  const g = ipv6Groups(address);
+  // Anything that isn't a readable address is refused rather than guessed at.
+  if (!g) return true;
+  const [g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0, g6 = 0] = g;
+  // The IPv4 rules only look at the first two octets, which sit in one group.
+  const embedded = (group: number) => privateV4(group >> 8, group & 0xff);
+  // Forms that carry an IPv4 address inside an IPv6 one. A URL normalizes them to hex
+  // (http://[::ffff:127.0.0.1]/ becomes [::ffff:7f00:1]), so the IPv4 rules must apply to them too.
+  // ::/96 (compatible, which also covers :: and ::1) and ::ffff:0:0/96 (mapped):
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0 && (g5 === 0 || g5 === 0xffff)) return embedded(g6);
+  // ::ffff:0:0:0/96 (translated):
+  if (g0 === 0 && g1 === 0 && g2 === 0 && g3 === 0 && g4 === 0xffff && g5 === 0) return embedded(g6);
+  // 64:ff9b::/96 (NAT64), and 64:ff9b:1::/48, which is for local networks only:
+  if (g0 === 0x64 && g1 === 0xff9b) return g2 === 1 || embedded(g6);
+  // 2002::/16 (6to4) carries the address in the second and third groups:
+  if (g0 === 0x2002) return embedded(g1);
+  return (
+    (g0 & 0xfe00) === 0xfc00 || // unique local
+    (g0 & 0xffc0) === 0xfe80 || // link-local
+    (g0 & 0xffc0) === 0xfec0 || // site-local, deprecated but still routed by some networks
+    (g0 & 0xff00) === 0xff00 // multicast
   );
 }
 
