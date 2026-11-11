@@ -115,6 +115,7 @@ const app = createApp({
   db,
   engine,
   // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
+  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
   modelSettings: {
     list: () =>
       describeModelSettings(
@@ -124,7 +125,6 @@ const app = createApp({
       ),
     update: (spec, patch) => updateModelSettings(settings, modelSettingsPath, spec, patch, { baseUrl: localServer }),
   },
-  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
   artifacts,
   purpose,
   goalDrafter,

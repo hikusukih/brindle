@@ -32,7 +32,7 @@ function ModelLimits({ view, onSaved }: { view: ModelSettingsView; onSaved: (v: 
     const settings: Record<string, number | boolean | null> = {};
     for (const f of fields) {
       const text = (values[f.key] ?? "").trim();
-      settings[f.key] = text === "" ? null : Number(text) * (f.unit ?? 1);
+      settings[f.key] = text === "" ? null : Math.round(Number(text) * (f.unit ?? 1));
     }
     settings.warmCache = warm === "default" ? null : warm === "true";
     try {

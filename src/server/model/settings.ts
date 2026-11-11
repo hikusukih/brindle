@@ -206,7 +206,7 @@ export async function updateModelSettings(
   const given = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== null));
   const next: Record<string, unknown> = { ...store.entry(spec), ...parseSettings("The settings", spec, given) };
   for (const key of cleared) {
-    if (!(key in defaultModelSettings))
+    if (!Object.hasOwn(defaultModelSettings, key))
       throw new ModelSettingsError(`The settings: "${spec}" has an unknown setting "${key}".`);
     delete next[key];
   }
