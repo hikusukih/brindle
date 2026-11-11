@@ -1,0 +1,21 @@
+{
+  "name": "draft-answer-that-is-not-a-draft-is-refused",
+  "description": "If the model answers with something that is not a draft, the screen gets an error and no guess is made.",
+  "messages": [],
+  "goalDraft": {
+    "paste": "Some notes.",
+    "expect": {
+      "drafted": false,
+      "goals": 0,
+      "schedules": 0
+    }
+  },
+  "script": {
+    "turns": [
+      {
+        "text": ["Sure! I have created your goals."]
+      }
+    ]
+  },
+  "expect": []
+}
