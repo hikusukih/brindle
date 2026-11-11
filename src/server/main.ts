@@ -11,7 +11,13 @@ import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry } from "./model/config.js";
-import { applyServerWindows, loadModelSettings, ModelSettingsStore, makePrepareModel } from "./model/settings.js";
+import {
+  applyServerWindows,
+  loadModelSettings,
+  ModelSettingsStore,
+  makePrepareModel,
+  startupSpecs,
+} from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
@@ -55,18 +61,16 @@ const settings = new ModelSettingsStore(
   () => models.defaultSpec,
   (spec) => models.list().some((m) => m.spec === spec),
 );
+const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 await applyServerWindows(
   settings,
-  // Channels' stored models too: after a restart they would otherwise run on the default numbers until re-picked.
-  [
-    ...settings.specs(),
-    ...(models.defaultSpec ? [models.defaultSpec] : []),
-    ...listChannels(db, { archived: true }).flatMap((c) => (c.model ? [c.model] : [])),
-    ...listChannels(db).flatMap((c) => (c.model ? [c.model] : [])),
-  ],
-  process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
+  startupSpecs(
+    settings,
+    models.defaultSpec ?? null,
+    [...listChannels(db), ...listChannels(db, { archived: true })].map((c) => c.model),
+  ),
+  localServer,
 );
-const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 // A model chosen later, for one channel or as the default, gets its server's window asked for the first time it is used.
 const prepareModel = makePrepareModel(settings, localServer);
 const limitsFor = (spec: string | null): RunLimits => {

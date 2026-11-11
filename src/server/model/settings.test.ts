@@ -7,6 +7,7 @@ import {
   ModelSettingsStore,
   makePrepareModel,
   serverContextWindow,
+  startupSpecs,
 } from "./settings.js";
 
 const file = (json: unknown) => () => JSON.stringify(json);
@@ -101,5 +102,16 @@ describe("makePrepareModel", () => {
     await prepare("openai:local");
     expect(store.forSpec("openai:local").contextWindow).toBe(8192);
     expect(asked).toBe(1);
+  });
+});
+
+describe("startupSpecs", () => {
+  it("includes a channel's stored model that is outside the settings file, archived or not, once", () => {
+    const store = new ModelSettingsStore({ "openai:a": { contextWindow: 4096 } }, () => "openai:a");
+    expect(startupSpecs(store, "openai:default", ["openai:b", null, "openai:b", "openai:a"]).sort()).toEqual([
+      "openai:a",
+      "openai:b",
+      "openai:default",
+    ]);
   });
 });

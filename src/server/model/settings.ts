@@ -182,3 +182,18 @@ export function makePrepareModel(
     await applyServerWindows(store, [spec], baseUrl, fetchFn);
   };
 }
+
+/**
+ * Every spec whose window should be asked for at startup: the settings file's models, the default, and each
+ * channel's stored model (archived ones too). Without the channels' models, a restart would leave a channel on the
+ * default numbers until someone re-picked its model.
+ */
+export function startupSpecs(
+  store: ModelSettingsStore,
+  defaultSpec: string | null,
+  channelModels: Array<string | null>,
+): string[] {
+  const specs = [...store.specs(), ...(defaultSpec ? [defaultSpec] : [])];
+  for (const m of channelModels) if (m) specs.push(m);
+  return [...new Set(specs)];
+}
