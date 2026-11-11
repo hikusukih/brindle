@@ -420,7 +420,12 @@ describe("channel view", () => {
       "/api/channels/c1/runs": () =>
         Response.json([
           run("done", null, [
-            event(1, "approval_request", { callId: "k1", tool: "send_email", reason: "Send it", arguments: { note: "model draft" } }),
+            event(1, "approval_request", {
+              callId: "k1",
+              tool: "send_email",
+              reason: "Send it",
+              arguments: { note: "model draft" },
+            }),
             event(2, "approval_decision", { callId: "k1", decision: "approve", arguments: { note: "user version" } }),
           ]),
         ]),

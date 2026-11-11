@@ -92,7 +92,7 @@ export function proposeGoalTool(db: Db, scheduler: Scheduler): Tool {
       // Says what was saved, in full: the user may have edited the draft on the card, and the model must not go on
       // describing the draft it proposed.
       const when = draft.schedule ? `schedule ${draft.schedule.cron}: ${draft.schedule.prompt}` : "no schedule";
-      return `Created the goal "${goal.title}" (${goal.id}). Its channel has the same name. Saved brief: ${draft.brief.replace(/[.\s]+$/, "")}. Saved ${when}.`;
+      return `Created the goal "${goal.title}" (${goal.id}). Its channel has the same name. Saved brief: ${draft.brief.replace(/[.\s]+$/, "")}. Saved ${when.replace(/[.\s]+$/, "")}.`;
     },
   };
 }
