@@ -81,7 +81,12 @@ export function channelTranscript(db: Db, channelId: string): RunWithEvents[] {
 type Decision = "approve" | "decline";
 
 /** The in-memory side of a run's approvals; the stored events are what survives a restart. */
-type LiveRun = { decisions: Map<string, Decision>; waiters: Map<string, () => void> };
+type LiveRun = {
+  decisions: Map<string, Decision>;
+  /** Arguments the user edited on a card before approving, by call id. */
+  revised: Map<string, Record<string, unknown>>;
+  waiters: Map<string, () => void>;
+};
 
 /** What a run needs to pick up where a restart left it: the unanswered calls of its last step and its counters. */
 type Resume = {
@@ -90,6 +95,7 @@ type Resume = {
   spentMillis: number;
   calls: ToolCall[];
   decisions: Map<string, Decision>;
+  revised: Map<string, Record<string, unknown>>;
   requested: Set<string>;
 };
 
@@ -98,7 +104,7 @@ function payload(e: RunEvent): Record<string, unknown> {
 }
 
 /** Rebuilds the model's view of one run from its stored events: the user message, each step's reply and tool calls, each tool result. */
-function messagesFromEvents(stored: RunEvent[]): Message[] {
+export function messagesFromEvents(stored: RunEvent[]): Message[] {
   const out: Message[] = [];
   let turn: Extract<Message, { role: "assistant" }> | undefined;
   for (const e of stored) {
@@ -127,7 +133,7 @@ function messagesFromEvents(stored: RunEvent[]): Message[] {
 }
 
 /** A run that ended mid-step can leave a tool call with no result, which providers reject; drop those calls. */
-function closeCalls(messages: Message[]): Message[] {
+export function closeCalls(messages: Message[]): Message[] {
   const answered = new Set(messages.flatMap((m) => (m.role === "tool" ? [m.toolCallId] : [])));
   return messages.flatMap((m): Message[] => {
     if (m.role !== "assistant" || !m.toolCalls) return [m];
@@ -228,7 +234,7 @@ export class RunEngine {
    * Records the user's answer to an approval card. A live run picks it up; a run left waiting by a
    * restart is rebuilt from its stored events and carried on from the call that was waiting.
    */
-  decide(runId: string, callId: string, decision: unknown): Run {
+  decide(runId: string, callId: string, decision: unknown, edits?: unknown): Run {
     if (decision !== "approve" && decision !== "decline") {
       throw new RunError("invalid_decision", 'A decision is "approve" or "decline".');
     }
@@ -240,12 +246,27 @@ export class RunEngine {
     if (!stored.some((e) => asked(e, "approval_request"))) throw new RunError("not_found", "No such approval request.");
     if (stored.some((e) => asked(e, "approval_decision"))) throw new RunError("finished", "That was already decided.");
 
+    // An edit is checked now, while the user can still fix it on the card, and stored with the decision.
+    let revised: Record<string, unknown> | undefined;
+    if (edits !== undefined && edits !== null) {
+      if (decision !== "approve" || typeof edits !== "object" || Array.isArray(edits))
+        throw new RunError("invalid_decision", "Edits can only come with an approval, as an object.");
+      const requestEvent = stored.find((e) => asked(e, "approval_request")) as RunEvent;
+      const request = payload(requestEvent);
+      const tool = this.tools.get(String(request.tool));
+      if (!tool?.revise) throw new RunError("invalid_decision", "This action cannot be edited before approving.");
+      const outcome = tool.revise(request.arguments as Record<string, unknown>, edits as Record<string, unknown>);
+      if ("error" in outcome) throw new RunError("invalid_decision", outcome.error);
+      revised = outcome.args;
+    }
+
     const state = this.live.get(runId);
     // Resolved before the decision is stored, so a model that is no longer configured leaves the card answerable.
     const model = state ? undefined : this.modelFor(getChannel(this.db, run.channelId).model);
-    this.append(runId, "approval_decision", { callId, decision });
+    this.append(runId, "approval_decision", { callId, decision, ...(revised ? { arguments: revised } : {}) });
     if (state) {
       state.decisions.set(callId, decision);
+      if (revised) state.revised.set(callId, revised);
       state.waiters.get(callId)?.();
     } else if (model) {
       this.resume(run, model);
@@ -256,14 +277,17 @@ export class RunEngine {
   private resume(run: Run, model: ModelAdapter) {
     const stored = this.storedEvents(run.id);
     const decisions = new Map<string, Decision>();
+    const revised = new Map<string, Record<string, unknown>>();
     const requested = new Set<string>();
     const answered = new Set<string>();
     const calls: ToolCall[] = [];
     for (const e of stored) {
       const d = payload(e);
       if (e.type === "approval_request") requested.add(String(d.callId));
-      else if (e.type === "approval_decision") decisions.set(String(d.callId), d.decision as Decision);
-      else if (e.type === "tool_result") answered.add(String(d.id));
+      else if (e.type === "approval_decision") {
+        decisions.set(String(d.callId), d.decision as Decision);
+        if (d.arguments) revised.set(String(d.callId), d.arguments as Record<string, unknown>);
+      } else if (e.type === "tool_result") answered.add(String(d.id));
       else if (e.type === "tool_call")
         calls.push({ id: String(d.id), name: String(d.name), arguments: d.arguments as Record<string, unknown> });
     }
@@ -278,6 +302,7 @@ export class RunEngine {
       spentMillis: Number(snapshot.spentMillis),
       calls: calls.filter((c) => !answered.has(c.id)),
       decisions,
+      revised,
       requested,
     };
     this.settled.set(run.id, this.loop(run.id, run.channelId, model, past, current, controller, resume));
@@ -368,7 +393,11 @@ export class RunEngine {
   ): Promise<void> {
     const limits = this.limitsFor(getChannel(this.db, channelId).model);
     const { maxSteps, maxTokens, maxMillis } = limits;
-    const state: LiveRun = { decisions: new Map(resume?.decisions), waiters: new Map() };
+    const state: LiveRun = {
+      decisions: new Map(resume?.decisions),
+      revised: new Map(resume?.revised),
+      waiters: new Map(),
+    };
     this.live.set(runId, state);
     const requested = new Set(resume?.requested);
 
@@ -468,6 +497,8 @@ export class RunEngine {
             callId: call.id,
             tool: call.name,
             arguments: call.arguments,
+            // Tells the card it may offer the arguments as fields to change.
+            ...(tool.revise ? { editable: true } : {}),
             reason: tool.describeCall?.(call.arguments) ?? `Run ${call.name}`,
             // What a restart needs to carry on from here.
             step,
@@ -496,13 +527,17 @@ export class RunEngine {
               isError = true;
             } else {
               try {
-                result = await tool.execute(call.arguments, {
+                const edited = state.revised.get(call.id);
+                result = await tool.execute(edited ?? call.arguments, {
                   runId,
                   scope,
                   signal: controller.signal,
                   log: (message) => console.log(`[${call.name}] ${message}`),
                   emit: (type, data) => this.append(runId, type, data),
                 });
+                // The model's own call still shows what it proposed, so say plainly that the user changed it.
+                if (edited)
+                  result = `The user edited your proposal before approving it, so the call ran with their version, not yours. ${result}`;
               } catch (error) {
                 // A cancel or a limit during the tool is the run's to handle, not a tool failure.
                 if (controller.signal.aborted) throw controller.signal.reason;
@@ -637,7 +672,7 @@ export class RunEngine {
         const unfolded = this.history(channelId);
         const summary = latestSummary(this.db, channelId);
         const share = historyShare(
-          this.limits.contextWindow,
+          this.limitsFor(spec).contextWindow,
           summary ? estimateTokens(summary.text) : 0,
           estimateTokens(harnessInstructions),
           // The same tool definitions assembly subtracts, so the fold's lines are taken of the share layer 4 really gets.

@@ -38,6 +38,8 @@ export type Summarize = (input: {
   previous: string | null;
   runs: Foldable[];
   shorten?: boolean;
+  /** What the summary should center on, such as the topic of a branch; absent for an ordinary fold. */
+  focus?: string;
   signal?: AbortSignal;
 }) => Promise<{ text: string; tokensUsed: number }>;
 
@@ -60,9 +62,10 @@ const render = (m: Message) =>
 
 /** A summarizer that asks a model with no tools, as a housekeeping call does. */
 export function modelSummarizer(model: ModelAdapter): Summarize {
-  return async ({ previous, runs, shorten, signal }) => {
+  return async ({ previous, runs, shorten, focus, signal }) => {
     const transcript = runs.map((r) => r.messages.map(render).join("\n")).join("\n\n");
     const user = [
+      focus ? `Center the summary on this topic, the one the conversation is moving to: ${focus}` : "",
       `Previous summary:\n${previous ?? "(none yet)"}`,
       `<conversation>\n${transcript}\n</conversation>`,
       shorten
@@ -85,6 +88,31 @@ export function modelSummarizer(model: ModelAdapter): Summarize {
     }
     return { text: text.trim(), tokensUsed };
   };
+}
+
+/**
+ * One summary call within the cap. Over it, the model is asked once to shorten; a second miss, or an empty reply,
+ * throws, so a caller changes nothing and history stays verbatim.
+ */
+export async function summarizeWithinCap(
+  summarize: Summarize,
+  input: Parameters<Summarize>[0],
+): Promise<{ text: string; tokensUsed: number }> {
+  let result = await summarize(input);
+  let used = result.tokensUsed;
+  if (estimateTokens(result.text) > summaryCapTokens) {
+    result = await summarize({
+      previous: result.text,
+      runs: [],
+      shorten: true,
+      focus: input.focus,
+      signal: input.signal,
+    });
+    used += result.tokensUsed;
+  }
+  if (!result.text || estimateTokens(result.text) > summaryCapTokens + replyMarginTokens)
+    throw new Error(result.text ? "summary over its cap" : "empty summary");
+  return { text: result.text, tokensUsed: used };
 }
 
 export type FoldResult =
@@ -123,17 +151,13 @@ export async function foldIfNeeded(
   const previous = latestSummary(db, channelId);
   const batch = unfolded.slice(0, count);
   try {
-    let result = await options.summarize({ previous: previous?.text ?? null, runs: batch, signal: options.signal });
-    let used = result.tokensUsed;
-    if (estimateTokens(result.text) > summaryCapTokens) {
-      // Asked once to shorten; a second miss is a failed fold.
-      result = await options.summarize({ previous: result.text, runs: [], shorten: true, signal: options.signal });
-      used += result.tokensUsed;
-    }
-    if (!result.text || estimateTokens(result.text) > summaryCapTokens + replyMarginTokens)
-      return { folded: false, reason: "failed", detail: result.text ? "summary over its cap" : "empty summary" };
+    const { text, tokensUsed: used } = await summarizeWithinCap(options.summarize, {
+      previous: previous?.text ?? null,
+      runs: batch,
+      signal: options.signal,
+    });
     const known = db.select({ id: artifacts.id }).from(artifacts).all();
-    const refs = known.map((a) => a.id).filter((id) => result.text.includes(id));
+    const refs = known.map((a) => a.id).filter((id) => text.includes(id));
     const version = (previous?.version ?? 0) + 1;
     db.insert(summaries)
       .values({
@@ -141,7 +165,7 @@ export async function foldIfNeeded(
         channelId,
         version,
         throughRunId: batch.at(-1)?.id ?? null,
-        text: result.text,
+        text,
         artifacts: JSON.stringify(refs),
         tokensUsed: used,
         createdAt: (options.now ?? new Date()).toISOString(),
