@@ -1,8 +1,19 @@
+import { mkdtempSync } from "node:fs";
+import type { AddressInfo } from "node:net";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { serve } from "@hono/node-server";
+import { chromium } from "playwright";
+import { build } from "vite";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { createApp } from "../../app.js";
+import { resolveToken } from "../../auth.js";
 import { createChannel } from "../../channels.js";
 import { modelSummarizer } from "../../compaction.js";
 import { runContext } from "../../context.js";
 import { openDatabase } from "../../db/index.js";
+import { runs as runsTable } from "../../db/schema.js";
 import { defaultLimits, RunEngine } from "../../runs.js";
 import { ModelError, type ModelEvent } from "../adapter.js";
 import { OpenAiAdapter } from "../openai.js";
@@ -173,5 +184,45 @@ describe("model boundary", () => {
     await expect(result).rejects.toMatchObject({ kind: "aborted" });
     expect(Date.now() - started).toBeLessThan(3_000);
     stalled.stall = null;
+  });
+
+  // One whole run through the web app in a real browser: sign in, make a channel, send a message, see the reply stream in.
+  it("carries a run from the browser through the server to the model and back", { timeout: 120_000 }, async () => {
+    const root = mkdtempSync(join(tmpdir(), "brindle-browser-"));
+    const clientRoot = join(root, "client");
+    // The client is built here rather than taken from dist/, since CI runs the tests before the build.
+    await build({
+      configFile: fileURLToPath(new URL("../../../../vite.config.ts", import.meta.url)),
+      build: { outDir: clientRoot, emptyOutDir: true },
+      logLevel: "error",
+    });
+    const db = openDatabase(":memory:");
+    const engine = new RunEngine(db, adapter(), { ...defaultLimits, contextWindow: nCtx });
+    const token = "test-token-1234abcd1234abcd1234";
+    const app = createApp({ db, engine, clientRoot, authHash: resolveToken(db, { BRINDLE_TOKEN: token }).hash });
+    const server = serve({ fetch: app.fetch, hostname: "127.0.0.1", port: 0 });
+    await new Promise<void>((resolve) => server.once("listening", () => resolve()));
+    const { port } = server.address() as AddressInfo;
+    const browser = await chromium.launch();
+    try {
+      const page = await browser.newPage();
+      await page.goto(`http://127.0.0.1:${port}/`);
+      await page.getByLabel("Login token").fill(token);
+      await page.keyboard.press("Enter");
+      await page.getByLabel("New channel name").fill("Boundary");
+      await page.getByRole("button", { name: "Create" }).click();
+      await page.getByLabel("Message").fill("Hello from the browser case");
+      await page.keyboard.press("Enter");
+      const runs = page.getByRole("region", { name: "Run" });
+      // The fake echoes the message; a real model says something, which is all this case can ask of it.
+      const reply = fake ? runs.getByText("Echo: Hello from the browser case") : runs.locator("p.whitespace-pre-wrap");
+      await reply.first().waitFor({ timeout: 60_000 });
+      const [run] = db.select().from(runsTable).all();
+      expect(run?.status).toBe("done");
+      if (fake) expect(fake.seen.at(-1)?.refused).toBe(false);
+    } finally {
+      await browser.close();
+      await new Promise((resolve) => server.close(resolve));
+    }
   });
 });
