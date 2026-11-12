@@ -108,7 +108,7 @@ describe("makePrepareModel", () => {
 });
 
 describe("startupSpecs", () => {
-  it("includes a channel's stored model that is outside the settings file, archived or not, once", () => {
+  it("includes a channel's stored model that is outside the settings file, once", () => {
     const store = new ModelSettingsStore({ "openai:a": { contextWindow: 4096 } }, () => "openai:a");
     expect(startupSpecs(store, "openai:default", ["openai:b", null, "openai:b", "openai:a"]).sort()).toEqual([
       "openai:a",
