@@ -27,7 +27,11 @@ function fakeTools(log: string[]) {
   });
   return new ToolRegistry()
     .register(record("lookup", "read", "found it"))
-    .register(record("send_email", "external", "sent"))
+    .register({
+      ...record("send_email", "external", "sent"),
+      revise: (args, edits) =>
+        typeof edits.x === "string" && edits.x ? { args: { ...args, x: edits.x } } : { error: "x must be some text" },
+    })
     .register(record("huge", "read", "x".repeat(100_000)))
     .register({
       ...record("boom", "read"),
@@ -131,6 +135,21 @@ describe("approvals", () => {
       "tool_result",
       "text",
     ]);
+  });
+
+  it("runs an edited call with the user's arguments, tells the model so, and keeps the edit across a restart", async () => {
+    const { engine, model, channel, log, data } = setup(external);
+    const run = engine.start(channel.id, "mail");
+    await waitUntil(() => engine.get(run.id).status === "waiting");
+    expect(data(run.id, "approval_request")[0]).toMatchObject({ editable: true });
+    expect(() => engine.decide(run.id, "e1", "approve", { x: "" })).toThrow(/some text/);
+    expect(() => engine.decide(run.id, "e1", "decline", { x: "no" })).toThrow(/only come with an approval/);
+    engine.decide(run.id, "e1", "approve", { x: "edited" });
+    await engine.whenSettled(run.id);
+    expect(log).toEqual(["send_email:edited"]);
+    expect(data(run.id, "approval_decision")[0]).toMatchObject({ decision: "approve", arguments: { x: "edited" } });
+    const told = model.requests[1]?.messages.at(-1);
+    expect(told?.role === "tool" && told.content).toMatch(/user edited your proposal.*ran with their version.*sent/);
   });
 
   it("tells the model about a decline and does not run the tool", async () => {

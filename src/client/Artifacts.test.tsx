@@ -95,6 +95,24 @@ describe("ArtifactsScreen", () => {
     expect(made.type).toBe("application/octet-stream");
   });
 
+  it("plays an audio artifact with the stored type and never as markup", async () => {
+    URL.createObjectURL = vi.fn(() => "blob:speech");
+    URL.revokeObjectURL = vi.fn();
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) =>
+        url.startsWith("/api/artifacts/")
+          ? new Response(new Uint8Array([1, 2, 3]), { headers: { "content-type": "audio/mpeg" } })
+          : Response.json([art({ kind: "audio", title: "Brief", mime: "audio/mpeg" })]),
+      ),
+    );
+    const { container } = render(<ArtifactsScreen empty={empty} />);
+    fireEvent.click(await screen.findByRole("button", { name: "Open" }));
+    await waitFor(() => expect(container.querySelector("audio")).not.toBeNull());
+    expect(container.querySelector("audio")?.getAttribute("src")).toBe("blob:speech");
+    expect((URL.createObjectURL as ReturnType<typeof vi.fn>).mock.calls[0]?.[0]).toHaveProperty("type", "audio/mpeg");
+  });
+
   it("says so when the file cannot be fetched", async () => {
     vi.stubGlobal(
       "fetch",
