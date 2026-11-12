@@ -2,12 +2,14 @@ import { describe, expect, it } from "vitest";
 import {
   applyServerWindows,
   defaultModelSettings,
+  describeModelSettings,
   loadModelSettings,
   ModelSettingsError,
   ModelSettingsStore,
   makePrepareModel,
   serverContextWindow,
   startupSpecs,
+  updateModelSettings,
 } from "./settings.js";
 
 const file = (json: unknown) => () => JSON.stringify(json);
@@ -113,5 +115,83 @@ describe("startupSpecs", () => {
       "openai:b",
       "openai:default",
     ]);
+  });
+});
+
+describe("editing model settings", () => {
+  const base = "http://127.0.0.1:8080/v1";
+
+  it("describes each model with the server's window and a problem when the configured one is larger", async () => {
+    const store = new ModelSettingsStore(
+      { "openai:local": { contextWindow: 9000, maxSteps: 4 } },
+      () => "openai:local",
+    );
+    const [view] = await describeModelSettings(store, ["openai:local"], { baseUrl: base, fetch: server(8192) });
+    expect(view).toMatchObject({
+      spec: "openai:local",
+      configured: { contextWindow: 9000, maxSteps: 4 },
+      serverWindow: 8192,
+      effective: { maxSteps: 4, contextWindow: 9000 },
+    });
+    expect(view?.problem).toMatch(/larger than the server's \(8192\)/);
+    const [hosted] = await describeModelSettings(store, ["anthropic:x"], { baseUrl: base });
+    expect(hosted).toMatchObject({ serverWindow: null, problem: null, configured: {} });
+  });
+
+  it("saves a change, clears a key with null, and writes the whole file", async () => {
+    const store = new ModelSettingsStore({ "openai:local": { maxSteps: 4, warmCache: false } }, () => "openai:local");
+    const writes: [string, string][] = [];
+    const write = (path: string, text: string) => void writes.push([path, text]);
+    await updateModelSettings(
+      store,
+      "/data/model-settings.json",
+      "openai:local",
+      { contextWindow: 4096, maxSteps: null },
+      { baseUrl: base, fetch: server(8192), write },
+    );
+    expect(store.entry("openai:local")).toEqual({ warmCache: false, contextWindow: 4096 });
+    expect(JSON.parse(writes[0]?.[1] ?? "")).toEqual({ "openai:local": { warmCache: false, contextWindow: 4096 } });
+    expect(writes[0]?.[0]).toBe("/data/model-settings.json");
+    // Clearing everything removes the model's entry.
+    await updateModelSettings(
+      store,
+      "/data/model-settings.json",
+      "openai:local",
+      { contextWindow: null, warmCache: null },
+      { write },
+    );
+    expect(JSON.parse(writes[1]?.[1] ?? "")).toEqual({});
+  });
+
+  it("refuses a window larger than the server's, an unknown key and a bad value, saving nothing", async () => {
+    const store = new ModelSettingsStore({}, () => "openai:local");
+    const write = () => {
+      throw new Error("should not write");
+    };
+    const opts = { baseUrl: base, fetch: server(8192), write };
+    await expect(updateModelSettings(store, "/x", "openai:local", { contextWindow: 9000 }, opts)).rejects.toThrow(
+      /larger than the server's \(8192\)/,
+    );
+    await expect(updateModelSettings(store, "/x", "openai:local", { colour: 1 }, opts)).rejects.toBeInstanceOf(
+      ModelSettingsError,
+    );
+    await expect(updateModelSettings(store, "/x", "openai:local", { maxSteps: -1 }, opts)).rejects.toThrow(
+      /positive whole number/,
+    );
+    await expect(updateModelSettings(store, "/x", "openai:local", { colour: null }, opts)).rejects.toBeInstanceOf(
+      ModelSettingsError,
+    );
+    expect(store.entry("openai:local")).toEqual({});
+  });
+
+  it("puts the old entry back when the file can't be written", async () => {
+    const store = new ModelSettingsStore({ "openai:local": { maxSteps: 4 } }, () => "openai:local");
+    const write = () => {
+      throw new Error("disk full");
+    };
+    await expect(updateModelSettings(store, "/x", "openai:local", { maxSteps: 6 }, { write })).rejects.toThrow(
+      "disk full",
+    );
+    expect(store.entry("openai:local")).toEqual({ maxSteps: 4 });
   });
 });
