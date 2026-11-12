@@ -14,7 +14,7 @@ import {
 } from "./context.js";
 import type { Db } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
-import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
+import { type Message, type ModelAdapter, ModelError, type ToolCall, type Usage } from "./model/adapter.js";
 import { scopeStatementFor } from "./scope-statements.js";
 import { describeToday } from "./time-zone.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
@@ -26,11 +26,16 @@ export type RunEvent = typeof events.$inferSelect;
 export type RunLimits = {
   /** Model calls in one run. */
   maxSteps: number;
-  /** Input plus output tokens summed over the run. */
+  /**
+   * Tokens the server had to process, summed over the run: input it did not serve from its cache, plus output. Where
+   * a server reports no cached count, all input counts (docs/decisions.md).
+   */
   maxTokens: number;
   maxMillis: number;
-  /** The model's context window in tokens; a per-model setting arrives later. */
+  /** The model's context window in tokens. */
   contextWindow: number;
+  /** The spec these numbers belong to, named in each context report; absent: "default". */
+  model?: string;
   /** How long a run may wait for an approval before it ends as "approval not given". */
   approvalMillis: number;
 };
@@ -79,15 +84,33 @@ export function channelTranscript(db: Db, channelId: string): RunWithEvents[] {
 type Decision = "approve" | "decline";
 
 /** The in-memory side of a run's approvals; the stored events are what survives a restart. */
-type LiveRun = { decisions: Map<string, Decision>; waiters: Map<string, () => void> };
+type LiveRun = {
+  decisions: Map<string, Decision>;
+  /** Arguments the user edited on a card before approving, by call id. */
+  revised: Map<string, Record<string, unknown>>;
+  waiters: Map<string, () => void>;
+};
+
+/**
+ * What one model call adds toward the token limit: the input the server had to read plus the output. Without a cached
+ * count from the server, all input counts, so a run is never under-counted.
+ */
+export function countedTokens(usage: Usage): { tokens: number; allInput: boolean } {
+  const cached = usage.cachedInputTokens;
+  if (cached === undefined) return { tokens: usage.inputTokens + usage.outputTokens, allInput: true };
+  return { tokens: Math.max(0, usage.inputTokens - cached) + usage.outputTokens, allInput: false };
+}
 
 /** What a run needs to pick up where a restart left it: the unanswered calls of its last step and its counters. */
 type Resume = {
   step: number;
   tokens: number;
+  /** True once a step's usage came without a cached count, so all of its input was counted. */
+  countedAllInput: boolean;
   spentMillis: number;
   calls: ToolCall[];
   decisions: Map<string, Decision>;
+  revised: Map<string, Record<string, unknown>>;
   requested: Set<string>;
 };
 
@@ -96,7 +119,7 @@ function payload(e: RunEvent): Record<string, unknown> {
 }
 
 /** Rebuilds the model's view of one run from its stored events: the user message, each step's reply and tool calls, each tool result. */
-function messagesFromEvents(stored: RunEvent[]): Message[] {
+export function messagesFromEvents(stored: RunEvent[]): Message[] {
   const out: Message[] = [];
   let turn: Extract<Message, { role: "assistant" }> | undefined;
   for (const e of stored) {
@@ -125,7 +148,7 @@ function messagesFromEvents(stored: RunEvent[]): Message[] {
 }
 
 /** A run that ended mid-step can leave a tool call with no result, which providers reject; drop those calls. */
-function closeCalls(messages: Message[]): Message[] {
+export function closeCalls(messages: Message[]): Message[] {
   const answered = new Set(messages.flatMap((m) => (m.role === "tool" ? [m.toolCallId] : [])));
   return messages.flatMap((m): Message[] => {
     if (m.role !== "assistant" || !m.toolCalls) return [m];
@@ -151,7 +174,8 @@ export class RunEngine {
   constructor(
     private readonly db: Db,
     private readonly model: ModelSource,
-    private readonly limits: RunLimits = defaultLimits,
+    // One set for every channel, or a function that picks by the channel's model spec (null: the default model).
+    private readonly limitSource: RunLimits | ((spec: string | null) => RunLimits) = defaultLimits,
     private readonly tools: ToolRegistry = new ToolRegistry(),
     /** Housekeeping: rolling compaction runs on the utility model after a run ends. Absent: history is never folded. */
     private readonly compaction?: { utilityModel: ModelSource; housekeepingMillis?: number },
@@ -193,6 +217,7 @@ export class RunEngine {
       stopReason: null,
       startedAt: now.toISOString(),
       endedAt: null,
+      tokens: 0,
     };
     this.db.insert(runs).values(run).run();
     this.append(run.id, "message", { text: message }, now);
@@ -227,7 +252,7 @@ export class RunEngine {
    * Records the user's answer to an approval card. A live run picks it up; a run left waiting by a
    * restart is rebuilt from its stored events and carried on from the call that was waiting.
    */
-  decide(runId: string, callId: string, decision: unknown): Run {
+  decide(runId: string, callId: string, decision: unknown, edits?: unknown): Run {
     if (decision !== "approve" && decision !== "decline") {
       throw new RunError("invalid_decision", 'A decision is "approve" or "decline".');
     }
@@ -239,12 +264,27 @@ export class RunEngine {
     if (!stored.some((e) => asked(e, "approval_request"))) throw new RunError("not_found", "No such approval request.");
     if (stored.some((e) => asked(e, "approval_decision"))) throw new RunError("finished", "That was already decided.");
 
+    // An edit is checked now, while the user can still fix it on the card, and stored with the decision.
+    let revised: Record<string, unknown> | undefined;
+    if (edits !== undefined && edits !== null) {
+      if (decision !== "approve" || typeof edits !== "object" || Array.isArray(edits))
+        throw new RunError("invalid_decision", "Edits can only come with an approval, as an object.");
+      const requestEvent = stored.find((e) => asked(e, "approval_request")) as RunEvent;
+      const request = payload(requestEvent);
+      const tool = this.tools.get(String(request.tool));
+      if (!tool?.revise) throw new RunError("invalid_decision", "This action cannot be edited before approving.");
+      const outcome = tool.revise(request.arguments as Record<string, unknown>, edits as Record<string, unknown>);
+      if ("error" in outcome) throw new RunError("invalid_decision", outcome.error);
+      revised = outcome.args;
+    }
+
     const state = this.live.get(runId);
     // Resolved before the decision is stored, so a model that is no longer configured leaves the card answerable.
     const model = state ? undefined : this.modelFor(getChannel(this.db, run.channelId).model);
-    this.append(runId, "approval_decision", { callId, decision });
+    this.append(runId, "approval_decision", { callId, decision, ...(revised ? { arguments: revised } : {}) });
     if (state) {
       state.decisions.set(callId, decision);
+      if (revised) state.revised.set(callId, revised);
       state.waiters.get(callId)?.();
     } else if (model) {
       this.resume(run, model);
@@ -255,14 +295,17 @@ export class RunEngine {
   private resume(run: Run, model: ModelAdapter) {
     const stored = this.storedEvents(run.id);
     const decisions = new Map<string, Decision>();
+    const revised = new Map<string, Record<string, unknown>>();
     const requested = new Set<string>();
     const answered = new Set<string>();
     const calls: ToolCall[] = [];
     for (const e of stored) {
       const d = payload(e);
       if (e.type === "approval_request") requested.add(String(d.callId));
-      else if (e.type === "approval_decision") decisions.set(String(d.callId), d.decision as Decision);
-      else if (e.type === "tool_result") answered.add(String(d.id));
+      else if (e.type === "approval_decision") {
+        decisions.set(String(d.callId), d.decision as Decision);
+        if (d.arguments) revised.set(String(d.callId), d.arguments as Record<string, unknown>);
+      } else if (e.type === "tool_result") answered.add(String(d.id));
       else if (e.type === "tool_call")
         calls.push({ id: String(d.id), name: String(d.name), arguments: d.arguments as Record<string, unknown> });
     }
@@ -274,12 +317,18 @@ export class RunEngine {
     const resume: Resume = {
       step: Number(snapshot.step),
       tokens: Number(snapshot.tokens),
+      countedAllInput: snapshot.countedAllInput === true,
       spentMillis: Number(snapshot.spentMillis),
       calls: calls.filter((c) => !answered.has(c.id)),
       decisions,
+      revised,
       requested,
     };
     this.settled.set(run.id, this.loop(run.id, run.channelId, model, past, current, controller, resume));
+  }
+
+  private limitsFor(spec: string | null): RunLimits {
+    return typeof this.limitSource === "function" ? this.limitSource(spec) : this.limitSource;
   }
 
   private modelFor(spec: string | null): ModelAdapter {
@@ -361,8 +410,13 @@ export class RunEngine {
     controller: AbortController,
     resume?: Resume,
   ): Promise<void> {
-    const { maxSteps, maxTokens, maxMillis } = this.limits;
-    const state: LiveRun = { decisions: new Map(resume?.decisions), waiters: new Map() };
+    const limits = this.limitsFor(getChannel(this.db, channelId).model);
+    const { maxSteps, maxTokens, maxMillis } = limits;
+    const state: LiveRun = {
+      decisions: new Map(resume?.decisions),
+      revised: new Map(resume?.revised),
+      waiters: new Map(),
+    };
     this.live.set(runId, state);
     const requested = new Set(resume?.requested);
 
@@ -381,6 +435,7 @@ export class RunEngine {
     arm();
 
     let tokens = resume?.tokens ?? 0;
+    let countedAllInput = resume?.countedAllInput ?? false;
     let carried = resume?.calls;
     const scope = { kind: "channel", id: channelId } as const;
     try {
@@ -399,10 +454,10 @@ export class RunEngine {
             assembled = assembleContext({
               past,
               current: messages,
-              window: this.limits.contextWindow,
+              window: limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
               scopeStatement: scopeStatementFor(this.db, channelId),
-              model: getChannel(this.db, channelId).model ?? "default",
+              model: limits.model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),
               summary: this.summaryFor(channelId),
@@ -428,7 +483,10 @@ export class RunEngine {
             else if (ev.type === "tool_call") calls.push(ev.call);
             else {
               stop = ev.stop;
-              tokens += ev.usage.inputTokens + ev.usage.outputTokens;
+              const counted = countedTokens(ev.usage);
+              tokens += counted.tokens;
+              if (counted.allInput) countedAllInput = true;
+              this.db.update(runs).set({ tokens }).where(eq(runs.id, runId)).run();
             }
           }
           if (text) this.append(runId, "text", { text });
@@ -462,10 +520,13 @@ export class RunEngine {
             callId: call.id,
             tool: call.name,
             arguments: call.arguments,
+            // Tells the card it may offer the arguments as fields to change.
+            ...(tool.revise ? { editable: true } : {}),
             reason: tool.describeCall?.(call.arguments) ?? `Run ${call.name}`,
             // What a restart needs to carry on from here.
             step,
             tokens,
+            countedAllInput,
             spentMillis: spent + (Date.now() - since),
           });
         }
@@ -490,13 +551,17 @@ export class RunEngine {
               isError = true;
             } else {
               try {
-                result = await tool.execute(call.arguments, {
+                const edited = state.revised.get(call.id);
+                result = await tool.execute(edited ?? call.arguments, {
                   runId,
                   scope,
                   signal: controller.signal,
                   log: (message) => console.log(`[${call.name}] ${message}`),
                   emit: (type, data) => this.append(runId, type, data),
                 });
+                // The model's own call still shows what it proposed, so say plainly that the user changed it.
+                if (edited)
+                  result = `The user edited your proposal before approving it, so the call ran with their version, not yours. ${result}`;
               } catch (error) {
                 // A cancel or a limit during the tool is the run's to handle, not a tool failure.
                 if (controller.signal.aborted) throw controller.signal.reason;
@@ -517,7 +582,11 @@ export class RunEngine {
           });
           messages.push({ role: "tool", toolCallId: call.id, content: sized.text });
         }
-        if (tokens >= maxTokens) return this.stopForLimit(runId, `token limit (${maxTokens}) reached`);
+        if (tokens >= maxTokens)
+          return this.stopForLimit(
+            runId,
+            `token limit (${maxTokens}) reached, counting ${countedAllInput ? "all input, since the server reported no cached count," : "uncached input"} plus output`,
+          );
         if (step >= maxSteps) return this.stopForLimit(runId, `step limit (${maxSteps}) reached`);
       }
     } catch (error) {
@@ -537,7 +606,7 @@ export class RunEngine {
   /** Resolves when the user answers the call; rejects with the abort reason on cancel or when the wait runs out. */
   private awaitDecision(callId: string, state: LiveRun, controller: AbortController): Promise<void> {
     const signal = controller.signal;
-    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limits.approvalMillis);
+    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limitsFor(null).approvalMillis);
     return new Promise<void>((resolve, reject) => {
       const onAbort = () => reject(signal.reason);
       if (signal.aborted) return onAbort();
@@ -638,7 +707,7 @@ export class RunEngine {
         const unfolded = this.history(channelId);
         const summary = latestSummary(this.db, channelId);
         const share = historyShare(
-          this.limits.contextWindow,
+          this.limitsFor(spec).contextWindow,
           summary ? estimateTokens(summary.text) : 0,
           estimateTokens(harnessInstructions),
           // The same tool definitions assembly subtracts, so the fold's lines are taken of the share layer 4 really gets.

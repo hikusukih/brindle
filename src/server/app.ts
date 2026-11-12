@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
 import { requireToken } from "./auth.js";
+import { branchChannel } from "./branch.js";
 import {
   archiveChannel,
   ChannelError,
@@ -16,9 +17,11 @@ import {
   restoreChannel,
   setChannelModel,
 } from "./channels.js";
+import type { Summarize } from "./compaction.js";
 import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
+import type { GoalDrafter } from "./goal-draft.js";
 import {
   archiveGoal,
   briefHistory,
@@ -35,6 +38,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import type { ModelRegistry } from "./model/config.js";
+import { ModelSettingsError, type ModelSettingsView } from "./model/settings.js";
 import type { PurposeDrafter } from "./purpose.js";
 import { listReports, markAllRead, markRead, type ReportFilter, type ReportKind } from "./reports.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
@@ -58,10 +62,29 @@ type AppOptions = {
   db: Db;
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
+  // The per-model numbers the Settings screen shows and edits; absent, the screen shows none.
+  modelSettings?: {
+    list: () => Promise<ModelSettingsView[]>;
+    update: (spec: string, patch: Record<string, unknown>) => Promise<void>;
+  };
   // What channels may be set to use; absent, setting a channel's model is refused.
-  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & { defaultSpec?: string };
+  models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
+    defaultSpec?: string;
+    // The numbers a channel's model runs under, for the channel view; absent, the view shows none.
+    settings?: (spec: string | null) => {
+      model: string;
+      contextWindow: number;
+      maxSteps: number;
+      maxTokens: number;
+      maxMillis: number;
+    };
+  };
   // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
   purpose?: PurposeDrafter;
+  // Writes a branched channel's seed summary ("New channel from here"); absent, the channel is made empty with a note.
+  branching?: Summarize;
+  // Drafts a goal from pasted words for the Goals screen; absent, the user fills the form by hand.
+  goalDrafter?: GoalDrafter;
   // Where artifacts live; absent, channel deletes cannot remove any.
   artifacts?: ArtifactStore;
   // Absent until the scheduler is built at startup (P4.12); goal archive, restore and delete then leave schedules alone.
@@ -78,8 +101,11 @@ export function createApp({
   db,
   engine,
   models,
+  modelSettings,
   artifacts,
   purpose,
+  branching,
+  goalDrafter,
   scheduler,
   onTimeZoneChange,
   clientRoot,
@@ -114,7 +140,12 @@ export function createApp({
   app.onError((err, c) => {
     if (err instanceof TimeZoneError) return c.json({ error: "invalid_time_zone", message: err.message }, 400);
     if (err instanceof ChannelError) {
-      const status = err.code === "not_found" ? 404 : err.code === "archived" ? 409 : 400;
+      const status =
+        err.code === "not_found"
+          ? 404
+          : err.code === "archived" || err.code === "goal_channel" || err.code === "run_unfinished"
+            ? 409
+            : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     if (err instanceof GoalError || err instanceof ScopeStatementError) {
@@ -151,8 +182,8 @@ export function createApp({
   app.get("/api/runs/:id/context", (c) => c.json(runContext(db, c.req.param("id"))));
   app.get("/api/runs/:id", (c) => c.json(needEngine().get(c.req.param("id"))));
   app.post("/api/runs/:id/approvals/:callId", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown };
-    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision));
+    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown; edits?: unknown };
+    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision, body.edits));
   });
   app.post("/api/runs/:id/cancel", (c) => c.json(needEngine().cancel(c.req.param("id"))));
 
@@ -204,6 +235,34 @@ export function createApp({
   });
   // No key and no endpoint ever leave the server: only the spec, its provider and whether a key is present.
   app.get("/api/models", (c) => c.json({ default: models?.defaultSpec ?? null, models: models?.list() ?? [] }));
+  app.get("/api/channels/:id/model-settings", (c) => {
+    const channel = getChannel(db, c.req.param("id"));
+    const s = models?.settings?.(channel.model);
+    if (!s) return c.json(null);
+    return c.json({
+      model: s.model,
+      contextWindow: s.contextWindow,
+      maxSteps: s.maxSteps,
+      maxTokens: s.maxTokens,
+      maxMillis: s.maxMillis,
+    });
+  });
+  app.get("/api/settings/model-settings", async (c) => c.json((await modelSettings?.list()) ?? []));
+  app.put("/api/settings/model-settings", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { model?: unknown; settings?: unknown };
+    if (!modelSettings) throw new HTTPException(400, { message: "No models can be set up on this server." });
+    if (typeof body.model !== "string" || !models?.list().some((m) => m.spec === body.model))
+      throw new HTTPException(400, { message: "model must be one of the configured models." });
+    if (typeof body.settings !== "object" || body.settings === null || Array.isArray(body.settings))
+      throw new HTTPException(400, { message: "settings must be an object." });
+    try {
+      await modelSettings.update(body.model, body.settings as Record<string, unknown>);
+    } catch (error) {
+      if (error instanceof ModelSettingsError) throw new HTTPException(400, { message: error.message });
+      throw error;
+    }
+    return c.json((await modelSettings.list()).find((m) => m.spec === body.model));
+  });
   app.put("/api/settings/default-model", async (c) => {
     const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };
     if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
@@ -239,6 +298,18 @@ export function createApp({
     const report = markRead(db, c.req.param("id"));
     if (!report) throw new HTTPException(404, { message: "No such report." });
     return c.json(report);
+  });
+  app.post("/api/channels/:id/branch", async (c) => {
+    const { runId, name } = (await c.req.json().catch(() => ({}))) as { runId?: unknown; name?: unknown };
+    if (typeof runId !== "string") throw new HTTPException(400, { message: "runId must be a string." });
+    return c.json(
+      await branchChannel(db, c.req.param("id"), runId, {
+        name,
+        summarize: branching,
+        draftPurpose: purpose ? (id, seed) => purpose.draftFromSeed(id, seed) : undefined,
+      }),
+      201,
+    );
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
@@ -340,7 +411,42 @@ export function createApp({
 
   const body = async (c: Context) => (await c.req.json().catch(() => ({}))) as Record<string, unknown>;
   app.get("/api/goals", (c) => c.json(listGoals(db, { archived: c.req.query("archived") === "true" })));
-  app.post("/api/goals", async (c) => c.json(createGoal(db, await body(c)), 201));
+  // The client hides the schedule fields when there is no scheduler, so a user is never offered what POST /api/goals would refuse.
+  app.get("/api/goals/options", (c) => c.json({ schedulesAvailable: Boolean(scheduler) }));
+  // Only drafts: nothing is created until the form is confirmed with POST /api/goals.
+  app.post("/api/goals/draft", async (c) => {
+    if (!goalDrafter) throw new HTTPException(503, { message: "No model is configured to draft with." });
+    const { text } = await body(c);
+    if (typeof text !== "string") throw new HTTPException(400, { message: "text must be a string." });
+    try {
+      return c.json(await goalDrafter.draft(text));
+    } catch (error) {
+      throw new HTTPException(409, { message: `Couldn't draft a goal: ${(error as Error).message}` });
+    }
+  });
+  app.post("/api/goals", async (c) => {
+    const input = await body(c);
+    const schedule = input.schedule as { cron?: unknown; prompt?: unknown } | undefined | null;
+    if (schedule) {
+      if (!scheduler) throw new HTTPException(503, { message: "Schedules aren't available yet." });
+      if (typeof schedule.cron !== "string" || typeof schedule.prompt !== "string" || !schedule.prompt.trim())
+        throw new HTTPException(400, { message: "A schedule needs a cron expression and a prompt." });
+      // Checked before the goal exists, so a bad expression leaves nothing behind.
+      try {
+        scheduler.upcoming(schedule.cron, 1);
+      } catch (error) {
+        throw new HTTPException(400, { message: (error as Error).message });
+      }
+    }
+    const goal = createGoal(db, input);
+    if (schedule)
+      scheduler?.createSchedule({
+        goalId: goal.id,
+        cron: String(schedule.cron),
+        prompt: String(schedule.prompt).trim(),
+      });
+    return c.json(goal, 201);
+  });
   app.get("/api/goals/:id", (c) => c.json(getGoal(db, c.req.param("id"))));
   app.patch("/api/goals/:id", async (c) => c.json(editGoal(db, c.req.param("id"), await body(c))));
   app.get("/api/goals/:id/brief-versions", (c) => c.json(briefHistory(db, c.req.param("id"))));

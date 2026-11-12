@@ -16,6 +16,8 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   // A model spec such as "openai:gpt-4o"; null means the server's default model.
   model: text("model"),
+  // JSON for a channel made by "New channel from here": where it came from and whether the history was carried over (see branch.ts).
+  branch: text("branch"),
 });
 
 export const runs = sqliteTable(
@@ -31,6 +33,8 @@ export const runs = sqliteTable(
     stopReason: text("stop_reason"),
     startedAt: text("started_at").notNull(),
     endedAt: text("ended_at"),
+    // Tokens counted toward the run's token limit so far: uncached input plus output (see countedTokens in runs.ts).
+    tokens: integer("tokens").notNull().default(0),
   },
   (t) => [index("runs_channel_idx").on(t.channelId, t.startedAt)],
 );

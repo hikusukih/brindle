@@ -11,6 +11,9 @@ const make: AdapterFactory = (behavior) => {
     case "text":
       turn = { text: behavior.chunks, usage };
       break;
+    case "cached_text":
+      turn = { text: behavior.chunks, usage: { ...usage, cachedInputTokens: 8 } };
+      break;
     case "tool_call":
       turn = { toolCalls: [behavior.call], usage };
       break;
@@ -27,7 +30,7 @@ const make: AdapterFactory = (behavior) => {
   return new ScriptedModel({ turns: [turn] });
 };
 
-runAdapterContract("ScriptedModel", make);
+runAdapterContract("ScriptedModel", make, { text: usage, cachedText: { ...usage, cachedInputTokens: 8 } });
 
 describe("ScriptedModel", () => {
   it("replays one turn per call, in order, and records what it was sent", async () => {

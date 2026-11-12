@@ -1,4 +1,4 @@
-import type { Message, ModelAdapter, ModelEvent, ModelRequest, StopReason } from "./adapter.js";
+import type { Message, ModelAdapter, ModelEvent, ModelRequest, StopReason, Usage } from "./adapter.js";
 import { ModelError } from "./adapter.js";
 import { httpError, networkError, parseJson, readSse } from "./sse.js";
 
@@ -18,7 +18,13 @@ type Chunk = {
     };
     finish_reason?: string | null;
   }[];
-  usage?: { prompt_tokens?: number; completion_tokens?: number } | null;
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    prompt_tokens_details?: { cached_tokens?: number } | null;
+  } | null;
+  /** llama.cpp's own report on its last chunk; cache_n is the prompt tokens it reused from the slot's cache. */
+  timings?: { cache_n?: number } | null;
 };
 
 function toWire(messages: Message[]) {
@@ -84,7 +90,8 @@ export class OpenAiAdapter implements ModelAdapter {
     // Tool calls arrive as fragments keyed by index; arguments are only valid JSON once complete.
     const pending = new Map<number, { id: string; name: string; args: string }>();
     let finish: string | null | undefined;
-    let usage = { inputTokens: 0, outputTokens: 0 };
+    let usage: Usage = { inputTokens: 0, outputTokens: 0 };
+    let cacheN: number | undefined;
     let sawDone = false;
 
     try {
@@ -96,7 +103,10 @@ export class OpenAiAdapter implements ModelAdapter {
         const chunk = parseJson(message.data) as Chunk;
         if (chunk.usage) {
           usage = { inputTokens: chunk.usage.prompt_tokens ?? 0, outputTokens: chunk.usage.completion_tokens ?? 0 };
+          const cached = chunk.usage.prompt_tokens_details?.cached_tokens;
+          if (typeof cached === "number") usage.cachedInputTokens = cached;
         }
+        if (typeof chunk.timings?.cache_n === "number") cacheN = chunk.timings.cache_n;
         const choice = chunk.choices?.[0];
         if (!choice) continue;
         if (choice.delta?.content) yield { type: "text", text: choice.delta.content };
@@ -127,6 +137,8 @@ export class OpenAiAdapter implements ModelAdapter {
       }
       yield { type: "tool_call", call: { id: entry.id, name: entry.name, arguments: args as Record<string, unknown> } };
     }
+    // Older llama.cpp builds give the cache count only in their timings.
+    if (usage.cachedInputTokens === undefined && cacheN !== undefined) usage.cachedInputTokens = cacheN;
     yield { type: "done", stop: pending.size ? "tool_use" : stopReason(finish), usage };
   }
 }

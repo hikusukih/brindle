@@ -1,15 +1,30 @@
 import { describe, expect, it } from "vitest";
-import { type ModelAdapter, ModelError, type ModelEvent, type ModelRequest, type ToolCall } from "./adapter.js";
+import {
+  type ModelAdapter,
+  ModelError,
+  type ModelEvent,
+  type ModelRequest,
+  type ToolCall,
+  type Usage,
+} from "./adapter.js";
 
 // What the suite needs an adapter to do. A real adapter builds these from recorded
 // fixtures so CI needs no key; the scripted model builds them from a script.
 export type ContractBehavior =
   | { kind: "text"; chunks: string[] }
+  // The same reply from a server that says how much of the prompt it served from its cache.
+  | { kind: "cached_text"; chunks: string[] }
   | { kind: "tool_call"; call: ToolCall }
   | { kind: "fail"; error: "rate_limit" | "unavailable" | "auth" }
   | { kind: "fail_midstream"; chunks: string[] };
 
 export type AdapterFactory = (behavior: ContractBehavior) => ModelAdapter;
+
+/**
+ * The usage an adapter's fixtures should come out as: `text` from a server that reports no cached count (so the field
+ * is left empty), `cachedText` from one that does. The run token limit relies on the difference (docs/decisions.md).
+ */
+export type ExpectedUsage = { text: Usage; cachedText: Usage };
 
 const request: ModelRequest = {
   messages: [{ role: "user", content: "Say hello." }],
@@ -38,7 +53,7 @@ async function collectError(stream: AsyncIterable<ModelEvent>): Promise<unknown>
 }
 
 /** Every adapter must pass this. Call it from the adapter's own test file. */
-export function runAdapterContract(name: string, make: AdapterFactory) {
+export function runAdapterContract(name: string, make: AdapterFactory, usage: ExpectedUsage) {
   describe(`model adapter contract: ${name}`, () => {
     it("streams text in order and ends with exactly one done event", async () => {
       const events = await collect(make({ kind: "text", chunks: ["Hel", "lo."] }).stream(request));
@@ -70,6 +85,20 @@ export function runAdapterContract(name: string, make: AdapterFactory) {
       if (done?.type === "done") {
         expect(done.usage.inputTokens).toBeGreaterThanOrEqual(0);
         expect(done.usage.outputTokens).toBeGreaterThanOrEqual(0);
+        expect(done.usage).toEqual(usage.text);
+        expect(done.usage.cachedInputTokens).toBeUndefined();
+      }
+    });
+
+    it("reports the cached part of the input when the server gives one", async () => {
+      const events = await collect(make({ kind: "cached_text", chunks: ["Hi."] }).stream(request));
+
+      const done = events.at(-1);
+      expect(done?.type).toBe("done");
+      if (done?.type === "done") {
+        expect(done.usage).toEqual(usage.cachedText);
+        expect(done.usage.cachedInputTokens).toBeGreaterThanOrEqual(0);
+        expect(done.usage.cachedInputTokens).toBeLessThanOrEqual(done.usage.inputTokens);
       }
     });
 
