@@ -11,6 +11,7 @@ import {
 import { DeleteChoice } from "./DeleteChoice";
 import { AuthedEventSource } from "./events";
 import { GoalBrief } from "./GoalBrief";
+import { GoalFields, type GoalValues } from "./Goals";
 import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -324,27 +325,79 @@ function SentView({ runId }: { runId: string }) {
   );
 }
 
+type Edits = Record<string, unknown>;
+type GoalArgs = { title?: string; brief?: string; schedule?: { cron?: string; prompt?: string } };
+
+/** The proposed goal's fields as the same form the Goals screen draws; what changed comes back as the edits to send. */
+function GoalDraftEditor({ args, onApprove }: { args: GoalArgs; onApprove: (edits: Edits | undefined) => void }) {
+  const start: GoalValues = {
+    title: args.title ?? "",
+    brief: args.brief ?? "",
+    cron: args.schedule?.cron ?? "",
+    prompt: args.schedule?.prompt ?? "",
+  };
+  const [values, setValues] = useState(start);
+  const edits = (): Edits | undefined => {
+    const out: Edits = {};
+    if (values.title !== start.title) out.title = values.title;
+    if (values.brief !== start.brief) out.brief = values.brief;
+    if (values.cron !== start.cron || values.prompt !== start.prompt)
+      out.schedule = {
+        cron: values.cron.trim(),
+        prompt: values.prompt.trim() || values.brief.trim() || values.title.trim(),
+      };
+    return Object.keys(out).length ? out : undefined;
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <GoalFields values={values} onChange={setValues} schedulesAvailable />
+      <div className="flex gap-2">
+        <button type="button" className={primary} onClick={() => onApprove(edits())}>
+          Approve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalCard(props: {
   tool: string;
   reason: string;
   args: unknown;
+  editable: boolean;
   decision: string | null;
   ended: boolean;
-  onDecide: (decision: "approve" | "decline") => void;
+  onDecide: (decision: "approve" | "decline", edits?: Edits) => void;
 }) {
-  const { tool, reason, args, decision, ended, onDecide } = props;
+  const { tool, reason, args, editable, decision, ended, onDecide } = props;
+  const open = !decision && !ended;
+  // Only a goal proposal has fields to change so far; any other tool keeps the plain card.
+  const goalEditor = open && editable && tool === "propose_goal";
   return (
     <section
       aria-label={`Approval for ${tool}`}
       className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-medium">{reason}</p>
-      <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">{JSON.stringify(args, null, 2)}</pre>
+      {goalEditor ? (
+        <>
+          <GoalDraftEditor args={args as GoalArgs} onApprove={(edits) => onDecide("approve", edits)} />
+          <div className="flex gap-2">
+            <button type="button" className={quiet} onClick={() => onDecide("decline")}>
+              Decline
+            </button>
+          </div>
+        </>
+      ) : (
+        <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+      )}
       {decision ? (
         <p className="text-xs text-slate-600">{decision === "approve" ? "Approved." : "Declined."}</p>
       ) : ended ? (
         <p className="text-xs text-slate-600">Not answered before the run ended.</p>
-      ) : (
+      ) : goalEditor ? null : (
         <div className="flex gap-2">
           <button type="button" className={primary} onClick={() => onDecide("approve")}>
             Approve
@@ -604,9 +657,12 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
-  const decide = async (runId: string, callId: string, decision: "approve" | "decline") => {
+  const decide = async (runId: string, callId: string, decision: "approve" | "decline", edits?: Edits) => {
     try {
-      await api(`/api/runs/${runId}/approvals/${callId}`, { method: "POST", body: { decision } });
+      await api(`/api/runs/${runId}/approvals/${callId}`, {
+        method: "POST",
+        body: { decision, ...(edits && { edits }) },
+      });
     } catch (err) {
       setProblem((err as Error).message);
     }
@@ -709,10 +765,11 @@ function ChannelView({ id }: { id: string }) {
                     key={ev.seq}
                     tool={String(d.tool)}
                     reason={String(d.reason)}
-                    args={d.arguments}
+                    args={answer && parse(answer).arguments ? parse(answer).arguments : d.arguments}
+                    editable={d.editable === true}
                     decision={answer ? String(parse(answer).decision) : null}
                     ended={run.status !== "running" && run.status !== "waiting"}
-                    onDecide={(decision) => decide(run.id, String(d.callId), decision)}
+                    onDecide={(decision, edits) => decide(run.id, String(d.callId), decision, edits)}
                   />
                 );
               }

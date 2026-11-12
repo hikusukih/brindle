@@ -26,6 +26,51 @@ export function hueOf(title: string): number {
   return h;
 }
 
+export type GoalValues = { title: string; brief: string; cron: string; prompt: string };
+
+/** The title, brief and schedule fields of a goal draft, drawn here for the Goals screen and on the approval card of a proposed goal. */
+export function GoalFields({
+  values,
+  onChange,
+  schedulesAvailable,
+}: {
+  values: GoalValues;
+  onChange: (next: GoalValues) => void;
+  schedulesAvailable: boolean;
+}) {
+  const { title, brief, cron, prompt } = values;
+  const set = (patch: Partial<GoalValues>) => onChange({ ...values, ...patch });
+  return (
+    <>
+      <label className="flex flex-col gap-1 text-sm">
+        Title
+        <input className={field} value={title} onChange={(e) => set({ title: e.target.value })} maxLength={120} />
+      </label>
+      <label className="flex flex-col gap-1 text-sm">
+        Brief
+        <textarea className={`min-h-24 ${field}`} value={brief} onChange={(e) => set({ brief: e.target.value })} />
+      </label>
+      {schedulesAvailable && (
+        <label className="flex flex-col gap-1 text-sm">
+          Schedule (five-field cron, optional)
+          <input
+            className={field}
+            value={cron}
+            onChange={(e) => set({ cron: e.target.value })}
+            placeholder="0 9 * * 1"
+          />
+        </label>
+      )}
+      {schedulesAvailable && cron.trim() && (
+        <label className="flex flex-col gap-1 text-sm">
+          What each run should do
+          <input className={field} value={prompt} onChange={(e) => set({ prompt: e.target.value })} />
+        </label>
+      )}
+    </>
+  );
+}
+
 function GoalForm({
   draft,
   schedulesAvailable,
@@ -37,10 +82,13 @@ function GoalForm({
   onDone: () => void;
   onCancel: () => void;
 }) {
-  const [title, setTitle] = useState(draft.title);
-  const [brief, setBrief] = useState(draft.brief);
-  const [cron, setCron] = useState(draft.schedule?.cron ?? "");
-  const [prompt, setPrompt] = useState(draft.schedule?.prompt ?? "");
+  const [values, setValues] = useState<GoalValues>({
+    title: draft.title,
+    brief: draft.brief,
+    cron: draft.schedule?.cron ?? "",
+    prompt: draft.schedule?.prompt ?? "",
+  });
+  const { title, brief, cron, prompt } = values;
   const [problem, setProblem] = useState<string | null>(null);
 
   const submit = async () => {
@@ -65,26 +113,7 @@ function GoalForm({
         void submit();
       }}
     >
-      <label className="flex flex-col gap-1 text-sm">
-        Title
-        <input className={field} value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} />
-      </label>
-      <label className="flex flex-col gap-1 text-sm">
-        Brief
-        <textarea className={`min-h-24 ${field}`} value={brief} onChange={(e) => setBrief(e.target.value)} />
-      </label>
-      {schedulesAvailable && (
-        <label className="flex flex-col gap-1 text-sm">
-          Schedule (five-field cron, optional)
-          <input className={field} value={cron} onChange={(e) => setCron(e.target.value)} placeholder="0 9 * * 1" />
-        </label>
-      )}
-      {schedulesAvailable && cron.trim() && (
-        <label className="flex flex-col gap-1 text-sm">
-          What each run should do
-          <input className={field} value={prompt} onChange={(e) => setPrompt(e.target.value)} />
-        </label>
-      )}
+      <GoalFields values={values} onChange={setValues} schedulesAvailable={schedulesAvailable} />
       {problem && (
         <p role="alert" className="text-sm text-red-700">
           {problem}

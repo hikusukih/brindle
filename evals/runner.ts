@@ -34,6 +34,8 @@ export type RunExpectation = {
   eventTypes?: string[];
   /** Answers to approval requests, in the order the cards appear. */
   approvals?: ("approve" | "decline")[];
+  /** What the user changes on each card before approving, by position in `approvals`; null leaves the card as proposed. */
+  edits?: (Record<string, unknown> | null)[];
   /** Every string must appear in some tool result stored on the run. */
   toolResultIncludes?: string[];
   /** The fake tools that actually ran, in order; an empty list asserts that nothing external was sent. */
@@ -238,6 +240,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     const run = engine.start(channel.id, text);
     // Answer approval cards as they appear; the run is parked in "waiting" until each one is answered.
     const answers = [...(want.approvals ?? [])];
+    const edits = [...(want.edits ?? [])];
     let settled = false;
     void engine.whenSettled(run.id).then(() => {
       settled = true;
@@ -258,7 +261,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       const answer = answers[0];
       if (next && answer) {
         answers.shift();
-        engine.decide(run.id, next, answer);
+        engine.decide(run.id, next, answer, edits.shift() ?? undefined);
       } else if (next && engine.get(run.id).status === "waiting") {
         failures.push(`${label}: waited on approval ${next} and no answer was scripted`);
         engine.cancel(run.id);
