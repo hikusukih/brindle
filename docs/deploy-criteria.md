@@ -9,9 +9,11 @@ Brindle is useful enough to deploy when every item below holds. This is a milest
 - **Goals can be made from the phone.** On the Goals screen, typing a goal in plain words produces a draft (title, brief, schedule). Nothing is created until the user confirms it, and the goal appears as a tile with its next run. (P4.3a)
 - **Goals act on a schedule, unattended.** A goal's scheduled run starts on its own at the right time in the user's time zone, and its result appears in the goal's channel. If the server restarts, scheduled runs pick back up without anyone stepping in. (P4.12)
 - **Unattended runs can't go rogue or get stuck.** A scheduled run that needs approval for an external call waits for it. If nobody approves within the timeout, the run ends as "approval not given" and nothing is sent. (P4.12)
+- **Goal runs know their goal.** Every scheduled run and every run in a goal's channel gets the goal's current brief in its context. (P4.27)
 - **Goals remember.** A goal keeps a state document that each run reads and updates. The user can view it, edit it and see its history. (P4.4, plus the boxes split from it: its gallery entry and putting the document into every goal run's context.)
 - **End-to-end proof.** A "learn Rust" goal builds a curriculum in its state document, the curriculum shows up in the gallery, and a later scheduled lesson updates its progress. (P4.7)
 - **Failures are visible.** A scheduled run that failed, was missed, or stopped on a limit leaves a report the user sees, not a silent gap. (P5.7 design note, then P5.8 stores the reports and P5.11 shows them in the goal's channel and on its Goals tile)
+- **Upgrades don't lose data.** When the server starts with migrations pending, it copies the database first, and the README says how to roll back. (P2.21)
 - **Phone-first basics hold.** Installed as an app on a phone, the login persists, and channels, goals and artifacts are each one tap apart. The phone reaches the server over HTTPS, which installing needs. (P2.23)
 
 ## Not required to deploy
@@ -26,6 +28,12 @@ Brindle is useful enough to deploy when every item below holds. This is a milest
 
 ## Deploy-path boxes
 
-These boxes, and every box they need, are taken before any other free box: P2.10, P2.11, P2.11a, P3.4, P4.3a, P4.4 and the boxes split from it (P4.4a, P4.4b, P4.4c), P4.7, P4.12, P5.7, P5.8, P5.11, P2.23.
+These boxes, and every box they need, are taken before any other free box: P2.11, P2.21, P3.4, P4.3a, P4.4 and the boxes split from it (P4.4a, P4.4b, P4.4c), P4.7, P4.12, P4.27, P5.7, P5.8, P5.11, P2.23. (P2.10 is done; P2.11a, a model change resetting where history starts, was taken off the list: it matters only once channels switch models, which a first deployment doesn't need.)
 
 When a box on this list is split, the new suffixed boxes join the list. When every criterion above holds, the user says so and this section is emptied.
+
+## Proposals wait until deploy
+
+Until the user empties the deploy-path list above, sessions file a proposal only if it serves a deploy-path box or a criterion above, or fixes a bug in what is already built. Every other proposal stays a line in its PR's **Proposals** list marked `(held: mvp)`; such a line doesn't block merging, and no session files it before the list is emptied. Then the status session files them as the cap allows, dropping any that later work made pointless.
+
+On 2026-11-12 the open `[plan]` PRs that no deploy criterion needs were closed with the `post-mvp` label, their branches kept. They are the first place to look when the deploy-path list is emptied: reopen what still fits, close the rest for good. Two of them name real gaps no box covers yet: #171 (the `use_credential` tool) and #181 (the vault screen).
