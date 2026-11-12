@@ -11,6 +11,7 @@ import {
 import { DeleteChoice } from "./DeleteChoice";
 import { AuthedEventSource } from "./events";
 import { GoalBrief } from "./GoalBrief";
+import { GoalFields, type GoalValues } from "./Goals";
 import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -324,27 +325,79 @@ function SentView({ runId }: { runId: string }) {
   );
 }
 
+type Edits = Record<string, unknown>;
+type GoalArgs = { title?: string; brief?: string; schedule?: { cron?: string; prompt?: string } };
+
+/** The proposed goal's fields as the same form the Goals screen draws; what changed comes back as the edits to send. */
+function GoalDraftEditor({ args, onApprove }: { args: GoalArgs; onApprove: (edits: Edits | undefined) => void }) {
+  const start: GoalValues = {
+    title: args.title ?? "",
+    brief: args.brief ?? "",
+    cron: args.schedule?.cron ?? "",
+    prompt: args.schedule?.prompt ?? "",
+  };
+  const [values, setValues] = useState(start);
+  const edits = (): Edits | undefined => {
+    const out: Edits = {};
+    if (values.title !== start.title) out.title = values.title;
+    if (values.brief !== start.brief) out.brief = values.brief;
+    if (values.cron !== start.cron || values.prompt !== start.prompt)
+      out.schedule = {
+        cron: values.cron.trim(),
+        prompt: values.prompt.trim() || values.brief.trim() || values.title.trim(),
+      };
+    return Object.keys(out).length ? out : undefined;
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <GoalFields values={values} onChange={setValues} schedulesAvailable />
+      <div className="flex gap-2">
+        <button type="button" className={primary} onClick={() => onApprove(edits())}>
+          Approve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalCard(props: {
   tool: string;
   reason: string;
   args: unknown;
+  editable: boolean;
   decision: string | null;
   ended: boolean;
-  onDecide: (decision: "approve" | "decline") => void;
+  onDecide: (decision: "approve" | "decline", edits?: Edits) => void;
 }) {
-  const { tool, reason, args, decision, ended, onDecide } = props;
+  const { tool, reason, args, editable, decision, ended, onDecide } = props;
+  const open = !decision && !ended;
+  // Only a goal proposal has fields to change so far; any other tool keeps the plain card.
+  const goalEditor = open && editable && tool === "propose_goal";
   return (
     <section
       aria-label={`Approval for ${tool}`}
       className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-medium">{reason}</p>
-      <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">{JSON.stringify(args, null, 2)}</pre>
+      {goalEditor ? (
+        <>
+          <GoalDraftEditor args={args as GoalArgs} onApprove={(edits) => onDecide("approve", edits)} />
+          <div className="flex gap-2">
+            <button type="button" className={quiet} onClick={() => onDecide("decline")}>
+              Decline
+            </button>
+          </div>
+        </>
+      ) : (
+        <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+      )}
       {decision ? (
         <p className="text-xs text-slate-600">{decision === "approve" ? "Approved." : "Declined."}</p>
       ) : ended ? (
         <p className="text-xs text-slate-600">Not answered before the run ended.</p>
-      ) : (
+      ) : goalEditor ? null : (
         <div className="flex gap-2">
           <button type="button" className={primary} onClick={() => onDecide("approve")}>
             Approve
@@ -484,6 +537,27 @@ function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
   );
 }
 
+/** The first line of a branched channel's transcript: where it came from, with a link back, and a note when the history could not be carried over. */
+function BranchNote({ json }: { json: string }) {
+  const b = JSON.parse(json) as {
+    fromChannelId: string;
+    fromChannelName: string;
+    fromRunId: string;
+    fromRunNumber?: number;
+    seeded: boolean;
+  };
+  return (
+    <p role="note" className="text-sm text-slate-600">
+      Branched from{" "}
+      <a className="underline" href={`#/channels/${b.fromChannelId}/runs/${b.fromRunId}`}>
+        {b.fromChannelName}
+      </a>
+      {b.fromRunNumber ? `, run ${b.fromRunNumber}` : ""}.
+      {b.seeded ? "" : " The history could not be carried over, so this channel starts empty."}
+    </p>
+  );
+}
+
 function ChannelView({ id }: { id: string }) {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -583,9 +657,12 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
-  const decide = async (runId: string, callId: string, decision: "approve" | "decline") => {
+  const decide = async (runId: string, callId: string, decision: "approve" | "decline", edits?: Edits) => {
     try {
-      await api(`/api/runs/${runId}/approvals/${callId}`, { method: "POST", body: { decision } });
+      await api(`/api/runs/${runId}/approvals/${callId}`, {
+        method: "POST",
+        body: { decision, ...(edits && { edits }) },
+      });
     } catch (err) {
       setProblem((err as Error).message);
     }
@@ -609,6 +686,21 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
+  const [branching, setBranching] = useState(false);
+  const branchFrom = async (runId: string) => {
+    // The request waits for the summary calls, which can take minutes: a second tap would make a second channel.
+    if (branching) return;
+    setBranching(true);
+    try {
+      const made = await api<Channel>(`/api/channels/${id}/branch`, { method: "POST", body: { runId } });
+      window.location.hash = `#/channels/${made.id}`;
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBranching(false);
+    }
+  };
+
   // A run waiting for an approval is still working as far as the channel is concerned.
   const running = runs.find((r) => r.status === "running" || r.status === "waiting");
   const readOnly = channel?.archivedAt != null;
@@ -620,6 +712,7 @@ function ChannelView({ id }: { id: string }) {
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
       {channel?.goalId && <GoalBrief goalId={channel.goalId} channelId={channel.id} />}
+      {channel?.branch && <BranchNote json={channel.branch} />}
       {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
@@ -672,10 +765,11 @@ function ChannelView({ id }: { id: string }) {
                     key={ev.seq}
                     tool={String(d.tool)}
                     reason={String(d.reason)}
-                    args={d.arguments}
+                    args={answer && parse(answer).arguments ? parse(answer).arguments : d.arguments}
+                    editable={d.editable === true}
                     decision={answer ? String(parse(answer).decision) : null}
                     ended={run.status !== "running" && run.status !== "waiting"}
-                    onDecide={(decision) => decide(run.id, String(d.callId), decision)}
+                    onDecide={(decision, edits) => decide(run.id, String(d.callId), decision, edits)}
                   />
                 );
               }
@@ -690,10 +784,25 @@ function ChannelView({ id }: { id: string }) {
                 </p>
               )}
             {run.status === "cancelled" && <p className="text-xs text-slate-500">Cancelled.</p>}
+            {run.status === "done" && !readOnly && !channel?.goalId && (
+              <button
+                type="button"
+                className={`${quiet} self-start`}
+                disabled={branching}
+                onClick={() => branchFrom(run.id)}
+              >
+                New channel from here
+              </button>
+            )}
             {run.status !== "running" && run.status !== "waiting" && <SentView runId={run.id} />}
           </section>
         ))}
       </div>
+      {branching && (
+        <p role="status" className="text-sm text-slate-600">
+          Writing the new channel's summary…
+        </p>
+      )}
       <Problem message={problem} />
       {readOnly ? (
         <p className="text-sm text-slate-600">This channel is archived. Restore it to send a message.</p>

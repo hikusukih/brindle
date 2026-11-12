@@ -5,6 +5,7 @@ import { HTTPException } from "hono/http-exception";
 import { streamSSE } from "hono/streaming";
 import { type ArtifactKind, type ArtifactStore, artifactKinds } from "./artifacts.js";
 import { requireToken } from "./auth.js";
+import { branchChannel } from "./branch.js";
 import {
   archiveChannel,
   ChannelError,
@@ -16,6 +17,7 @@ import {
   restoreChannel,
   setChannelModel,
 } from "./channels.js";
+import type { Summarize } from "./compaction.js";
 import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
@@ -36,6 +38,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import type { ModelRegistry } from "./model/config.js";
+import { ModelSettingsError, type ModelSettingsView } from "./model/settings.js";
 import type { PurposeDrafter } from "./purpose.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
@@ -58,6 +61,11 @@ type AppOptions = {
   db: Db;
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
+  // The per-model numbers the Settings screen shows and edits; absent, the screen shows none.
+  modelSettings?: {
+    list: () => Promise<ModelSettingsView[]>;
+    update: (spec: string, patch: Record<string, unknown>) => Promise<void>;
+  };
   // What channels may be set to use; absent, setting a channel's model is refused.
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
     defaultSpec?: string;
@@ -72,6 +80,8 @@ type AppOptions = {
   };
   // Drafts purpose statements; absent, the user can still write one but cannot ask for a draft.
   purpose?: PurposeDrafter;
+  // Writes a branched channel's seed summary ("New channel from here"); absent, the channel is made empty with a note.
+  branching?: Summarize;
   // Drafts a goal from pasted words for the Goals screen; absent, the user fills the form by hand.
   goalDrafter?: GoalDrafter;
   // Where artifacts live; absent, channel deletes cannot remove any.
@@ -90,8 +100,10 @@ export function createApp({
   db,
   engine,
   models,
+  modelSettings,
   artifacts,
   purpose,
+  branching,
   goalDrafter,
   scheduler,
   onTimeZoneChange,
@@ -127,7 +139,12 @@ export function createApp({
   app.onError((err, c) => {
     if (err instanceof TimeZoneError) return c.json({ error: "invalid_time_zone", message: err.message }, 400);
     if (err instanceof ChannelError) {
-      const status = err.code === "not_found" ? 404 : err.code === "archived" ? 409 : 400;
+      const status =
+        err.code === "not_found"
+          ? 404
+          : err.code === "archived" || err.code === "goal_channel" || err.code === "run_unfinished"
+            ? 409
+            : 400;
       return c.json({ error: err.code, message: err.message }, status);
     }
     if (err instanceof GoalError || err instanceof ScopeStatementError) {
@@ -164,8 +181,8 @@ export function createApp({
   app.get("/api/runs/:id/context", (c) => c.json(runContext(db, c.req.param("id"))));
   app.get("/api/runs/:id", (c) => c.json(needEngine().get(c.req.param("id"))));
   app.post("/api/runs/:id/approvals/:callId", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown };
-    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision));
+    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown; edits?: unknown };
+    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision, body.edits));
   });
   app.post("/api/runs/:id/cancel", (c) => c.json(needEngine().cancel(c.req.param("id"))));
 
@@ -229,6 +246,22 @@ export function createApp({
       maxMillis: s.maxMillis,
     });
   });
+  app.get("/api/settings/model-settings", async (c) => c.json((await modelSettings?.list()) ?? []));
+  app.put("/api/settings/model-settings", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { model?: unknown; settings?: unknown };
+    if (!modelSettings) throw new HTTPException(400, { message: "No models can be set up on this server." });
+    if (typeof body.model !== "string" || !models?.list().some((m) => m.spec === body.model))
+      throw new HTTPException(400, { message: "model must be one of the configured models." });
+    if (typeof body.settings !== "object" || body.settings === null || Array.isArray(body.settings))
+      throw new HTTPException(400, { message: "settings must be an object." });
+    try {
+      await modelSettings.update(body.model, body.settings as Record<string, unknown>);
+    } catch (error) {
+      if (error instanceof ModelSettingsError) throw new HTTPException(400, { message: error.message });
+      throw error;
+    }
+    return c.json((await modelSettings.list()).find((m) => m.spec === body.model));
+  });
   app.put("/api/settings/default-model", async (c) => {
     const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };
     if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
@@ -240,6 +273,18 @@ export function createApp({
     }
     setSetting(db, "default_model", model);
     return c.json({ default: models.defaultSpec ?? null });
+  });
+  app.post("/api/channels/:id/branch", async (c) => {
+    const { runId, name } = (await c.req.json().catch(() => ({}))) as { runId?: unknown; name?: unknown };
+    if (typeof runId !== "string") throw new HTTPException(400, { message: "runId must be a string." });
+    return c.json(
+      await branchChannel(db, c.req.param("id"), runId, {
+        name,
+        summarize: branching,
+        draftPurpose: purpose ? (id, seed) => purpose.draftFromSeed(id, seed) : undefined,
+      }),
+      201,
+    );
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };
