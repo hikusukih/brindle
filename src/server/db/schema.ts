@@ -17,6 +17,8 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   // A model spec such as "openai:gpt-4o"; null means the server's default model.
   model: text("model"),
+  // JSON for a channel made by "New channel from here": where it came from and whether the history was carried over (see branch.ts).
+  branch: text("branch"),
 });
 
 export const runs = sqliteTable(

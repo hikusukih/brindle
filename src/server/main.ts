@@ -6,13 +6,20 @@ import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
+import { modelSummarizer } from "./compaction.js";
 import { openDatabase } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
 import { openVault, VaultError } from "./keys/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry, supported } from "./model/config.js";
-import { applyServerWindows, loadModelSettings, ModelSettingsStore } from "./model/settings.js";
+import {
+  applyServerWindows,
+  describeModelSettings,
+  loadModelSettings,
+  ModelSettingsStore,
+  updateModelSettings,
+} from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
@@ -79,6 +86,8 @@ await applyServerWindows(
   [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
   process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
 );
+const modelSettingsPath = join(dataDir, "model-settings.json");
+const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 const limitsFor = (spec: string | null): RunLimits => {
   const s = settings.forSpec(spec);
   return { ...defaultLimits, ...s };
@@ -127,8 +136,23 @@ const app = createApp({
   engine,
   // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
   models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
+  modelSettings: {
+    list: () =>
+      describeModelSettings(
+        settings,
+        models.list().map((m) => m.spec),
+        { baseUrl: localServer },
+      ),
+    update: (spec, patch) => updateModelSettings(settings, modelSettingsPath, spec, patch, { baseUrl: localServer }),
+  },
   artifacts,
   purpose,
+  // The default model stands in for the source channel's own here, since a seed call isn't tied to one run.
+  branching: (input) =>
+    modelSummarizer(utilitySpec ? models.resolve(utilitySpec) : models.resolveForChannel(null))({
+      ...input,
+      signal: AbortSignal.timeout(10 * 60_000),
+    }),
   goalDrafter,
   clientRoot: existsSync(builtClient) ? builtClient : undefined,
   authHash: token.hash,

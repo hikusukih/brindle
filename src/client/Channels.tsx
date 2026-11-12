@@ -537,6 +537,27 @@ function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
   );
 }
 
+/** The first line of a branched channel's transcript: where it came from, with a link back, and a note when the history could not be carried over. */
+function BranchNote({ json }: { json: string }) {
+  const b = JSON.parse(json) as {
+    fromChannelId: string;
+    fromChannelName: string;
+    fromRunId: string;
+    fromRunNumber?: number;
+    seeded: boolean;
+  };
+  return (
+    <p role="note" className="text-sm text-slate-600">
+      Branched from{" "}
+      <a className="underline" href={`#/channels/${b.fromChannelId}/runs/${b.fromRunId}`}>
+        {b.fromChannelName}
+      </a>
+      {b.fromRunNumber ? `, run ${b.fromRunNumber}` : ""}.
+      {b.seeded ? "" : " The history could not be carried over, so this channel starts empty."}
+    </p>
+  );
+}
+
 function ChannelView({ id }: { id: string }) {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
@@ -665,6 +686,21 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
+  const [branching, setBranching] = useState(false);
+  const branchFrom = async (runId: string) => {
+    // The request waits for the summary calls, which can take minutes: a second tap would make a second channel.
+    if (branching) return;
+    setBranching(true);
+    try {
+      const made = await api<Channel>(`/api/channels/${id}/branch`, { method: "POST", body: { runId } });
+      window.location.hash = `#/channels/${made.id}`;
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBranching(false);
+    }
+  };
+
   // A run waiting for an approval is still working as far as the channel is concerned.
   const running = runs.find((r) => r.status === "running" || r.status === "waiting");
   const readOnly = channel?.archivedAt != null;
@@ -676,6 +712,7 @@ function ChannelView({ id }: { id: string }) {
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
       {channel?.goalId && <GoalBrief goalId={channel.goalId} channelId={channel.id} />}
+      {channel?.branch && <BranchNote json={channel.branch} />}
       {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
@@ -747,10 +784,25 @@ function ChannelView({ id }: { id: string }) {
                 </p>
               )}
             {run.status === "cancelled" && <p className="text-xs text-slate-500">Cancelled.</p>}
+            {run.status === "done" && !readOnly && !channel?.goalId && (
+              <button
+                type="button"
+                className={`${quiet} self-start`}
+                disabled={branching}
+                onClick={() => branchFrom(run.id)}
+              >
+                New channel from here
+              </button>
+            )}
             {run.status !== "running" && run.status !== "waiting" && <SentView runId={run.id} />}
           </section>
         ))}
       </div>
+      {branching && (
+        <p role="status" className="text-sm text-slate-600">
+          Writing the new channel's summary…
+        </p>
+      )}
       <Problem message={problem} />
       {readOnly ? (
         <p className="text-sm text-slate-600">This channel is archived. Restore it to send a message.</p>
