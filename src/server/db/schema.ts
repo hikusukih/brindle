@@ -33,6 +33,8 @@ export const runs = sqliteTable(
     stopReason: text("stop_reason"),
     startedAt: text("started_at").notNull(),
     endedAt: text("ended_at"),
+    // Tokens counted toward the run's token limit so far: uncached input plus output (see countedTokens in runs.ts).
+    tokens: integer("tokens").notNull().default(0),
   },
   (t) => [index("runs_channel_idx").on(t.channelId, t.startedAt)],
 );

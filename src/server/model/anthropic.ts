@@ -1,4 +1,4 @@
-import type { Message, ModelAdapter, ModelEvent, ModelRequest, StopReason } from "./adapter.js";
+import type { Message, ModelAdapter, ModelEvent, ModelRequest, StopReason, Usage } from "./adapter.js";
 import { ModelError } from "./adapter.js";
 import { httpError, networkError, parseJson, readSse } from "./sse.js";
 
@@ -87,7 +87,7 @@ export class AnthropicAdapter implements ModelAdapter {
     if (!response.body) throw new ModelError("unavailable", "The model API sent no body.");
 
     const tools = new Map<number, { id: string; name: string; json: string }>();
-    const usage = { inputTokens: 0, outputTokens: 0 };
+    const usage: Usage = { inputTokens: 0, outputTokens: 0 };
     let stop: string | null | undefined;
     let finished = false;
 
@@ -96,15 +96,27 @@ export class AnthropicAdapter implements ModelAdapter {
         const ev = parseJson(data) as {
           type: string;
           index?: number;
-          message?: { usage?: { input_tokens?: number; output_tokens?: number } };
+          message?: {
+            usage?: {
+              input_tokens?: number;
+              output_tokens?: number;
+              cache_creation_input_tokens?: number;
+              cache_read_input_tokens?: number;
+            };
+          };
           content_block?: { type: string; id?: string; name?: string };
           delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
           usage?: { output_tokens?: number };
           error?: { type?: string; message?: string };
         };
         if (ev.type === "message_start") {
-          usage.inputTokens = ev.message?.usage?.input_tokens ?? 0;
-          usage.outputTokens = ev.message?.usage?.output_tokens ?? 0;
+          const u = ev.message?.usage;
+          // Anthropic's input_tokens leaves out cache writes and reads; Usage counts every input token.
+          const created = u?.cache_creation_input_tokens ?? 0;
+          const read = u?.cache_read_input_tokens;
+          usage.inputTokens = (u?.input_tokens ?? 0) + created + (read ?? 0);
+          usage.outputTokens = u?.output_tokens ?? 0;
+          if (typeof read === "number") usage.cachedInputTokens = read;
         } else if (ev.type === "content_block_start" && ev.content_block?.type === "tool_use") {
           tools.set(ev.index ?? 0, { id: ev.content_block.id ?? "", name: ev.content_block.name ?? "", json: "" });
         } else if (ev.type === "content_block_delta") {
