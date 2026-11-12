@@ -10,6 +10,7 @@ import { modelSummarizer } from "./compaction.js";
 import { openDatabaseSafely } from "./db/backup.js";
 import type { Db } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
+import { goalStateAccess } from "./goal-state.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry, supported } from "./model/config.js";
@@ -92,7 +93,7 @@ const limitsFor = (spec: string | null): RunLimits => {
   return { ...defaultLimits, ...s };
 };
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const tools = builtInTools(process.env, artifacts, db);
+const tools = builtInTools(process.env, artifacts, db, goalStateAccess(db));
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
 const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
