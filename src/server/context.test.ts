@@ -29,7 +29,7 @@ describe("assembleContext", () => {
       past: [run("r1", 10)],
       current: [{ role: "user", content: "now" }],
       scopeStatement: { kind: "purpose", text: "Purpose: Rust" },
-      summary: "Earlier facts",
+      summary: { version: 1, text: "Earlier facts", runsFolded: 2 },
     });
     expect(messages.map((m) => m.role)).toEqual(["system", "system", "system", "user", "assistant", "user"]);
     expect(messages[1]?.content).toContain("Purpose: Rust");
@@ -105,6 +105,13 @@ describe("assembleContext", () => {
     // A report stored before these fields existed is not counted as a break.
     const legacy = { firstRunId: "r1" };
     expect(assembleContext({ ...base, model: "a", toolSet: "t1", previous: legacy }).report.breaks).toEqual([]);
+  });
+
+  it("records which version of the scope statement a request used, or null for none", () => {
+    const base = { past: [], current: [{ role: "user" as const, content: "hi" }], model: "a", toolSet: "t" };
+    expect(assembleContext(base).report.statementVersion).toBeNull();
+    const used = assembleContext({ ...base, scopeStatement: { kind: "purpose", text: "Plan a trip.", version: 3 } });
+    expect(used.report.statementVersion).toBe(3);
   });
 
   it("records a drafted, edited or restored scope statement as a planned break, and an unchanged one as none", () => {

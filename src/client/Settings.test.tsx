@@ -49,4 +49,63 @@ describe("Settings", () => {
     await screen.findByLabelText("openai:gpt-test");
     expect(screen.queryByRole("textbox")).toBeNull();
   });
+
+  it("shows each model's limits with the server's window, saves them in seconds and shows a refusal", async () => {
+    const calls: string[] = [];
+    const view = {
+      spec: "openai:gpt-test",
+      configured: { maxMillis: 60_000 },
+      effective: {
+        contextWindow: 32_000,
+        maxSteps: 10,
+        maxTokens: 100_000,
+        maxMillis: 60_000,
+        housekeepingMillis: 600_000,
+        warmCache: true,
+      },
+      serverWindow: 8192,
+      problem: null,
+    };
+    let refuse = true;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string, init?: { method?: string; body?: string }) => {
+        if (url === "/api/models") return Response.json(list);
+        if (url === "/api/settings/model-settings" && init?.method === "GET") return Response.json([view]);
+        calls.push(init?.body ?? "");
+        if (refuse)
+          return Response.json(
+            { message: "the configured contextWindow (9000) is larger than the server's (8192)." },
+            { status: 400 },
+          );
+        return Response.json({ ...view, configured: { contextWindow: 4096, maxMillis: 90_000 } });
+      }),
+    );
+    render(<SettingsScreen />);
+    const window = (await screen.findByLabelText(/Context window/)) as HTMLInputElement;
+    expect(screen.getByText("The server reports 8192.")).toBeTruthy();
+    expect(window.placeholder).toBe("32000");
+    expect((screen.getByLabelText(/Time limit per run/) as HTMLInputElement).value).toBe("60");
+
+    fireEvent.change(window, { target: { value: "9000" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save limits" }));
+    expect((await screen.findByRole("alert")).textContent).toMatch(/larger than the server's/);
+
+    refuse = false;
+    fireEvent.change(window, { target: { value: "4096" } });
+    fireEvent.change(screen.getByLabelText(/Time limit per run/), { target: { value: "90" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save limits" }));
+    expect(await screen.findByText("Saved.")).toBeTruthy();
+    expect(JSON.parse(calls.at(-1) ?? "")).toEqual({
+      model: "openai:gpt-test",
+      settings: {
+        contextWindow: 4096,
+        maxSteps: null,
+        maxTokens: null,
+        maxMillis: 90_000,
+        housekeepingMillis: null,
+        warmCache: null,
+      },
+    });
+  });
 });
