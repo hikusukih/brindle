@@ -8,7 +8,10 @@ import {
   type Run,
   type RunEvent,
 } from "./api";
+import { DeleteChoice } from "./DeleteChoice";
 import { AuthedEventSource } from "./events";
+import { GoalBrief } from "./GoalBrief";
+import { GoalFields, type GoalValues } from "./Goals";
 import { channelIdFromHash, runIdFromHash } from "./screens";
 
 const button = "min-h-11 rounded-lg px-3 text-sm font-medium";
@@ -44,12 +47,7 @@ function ChannelList() {
   const [problem, setProblem] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [renaming, setRenaming] = useState<{ id: string; name: string } | null>(null);
-  const [deleting, setDeleting] = useState<{
-    channel: Channel;
-    artifacts: Artifact[];
-    choice: "keep" | "all" | "some";
-    picked: string[];
-  } | null>(null);
+  const [deleting, setDeleting] = useState<{ channel: Channel; artifacts: Artifact[] } | null>(null);
 
   const load = useCallback(() => {
     api<Channel[]>(`/api/channels?archived=${showArchived}`)
@@ -76,7 +74,7 @@ function ChannelList() {
   const askDelete = async (c: Channel) => {
     try {
       const made = await api<Artifact[]>(`/api/channels/${c.id}/artifacts`);
-      if (made.length) setDeleting({ channel: c, artifacts: made, choice: "keep", picked: [] });
+      if (made.length) setDeleting({ channel: c, artifacts: made });
       else if (window.confirm(`Delete "${c.name}" and its history? This can't be undone.`))
         await act(`/api/channels/${c.id}`, "DELETE");
     } catch (e) {
@@ -84,10 +82,9 @@ function ChannelList() {
     }
   };
 
-  const confirmDelete = async () => {
+  const confirmDelete = async (ids: string[]) => {
     if (!deleting) return;
-    const { channel, artifacts, choice, picked } = deleting;
-    const ids = choice === "all" ? artifacts.map((a) => a.id) : choice === "some" ? picked : [];
+    const { channel } = deleting;
     setDeleting(null);
     await act(`/api/channels/${channel.id}`, "DELETE", ids.length ? { deleteArtifacts: ids } : undefined);
   };
@@ -121,60 +118,14 @@ function ChannelList() {
       </form>
       <Problem message={problem} />
       {deleting && (
-        <section aria-label="Delete channel" className="flex flex-col gap-2 rounded-lg border border-red-200 p-3">
-          <h2 className="font-medium">
-            Delete "{deleting.channel.name}" and its history? It made {deleting.artifacts.length}{" "}
-            {deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.
-          </h2>
-          {(
-            [
-              ["keep", "Keep all artifacts"],
-              ["all", "Delete all artifacts"],
-              ["some", "Choose which to delete"],
-            ] as const
-          ).map(([value, label]) => (
-            <label key={value} className="flex min-h-11 items-center gap-2">
-              <input
-                type="radio"
-                name="artifact-choice"
-                checked={deleting.choice === value}
-                onChange={() => setDeleting({ ...deleting, choice: value })}
-              />
-              {label}
-            </label>
-          ))}
-          {deleting.choice === "some" && (
-            <ul className="flex flex-col">
-              {deleting.artifacts.map((a) => (
-                <li key={a.id}>
-                  <label className="flex min-h-11 items-center gap-2">
-                    <input
-                      type="checkbox"
-                      checked={deleting.picked.includes(a.id)}
-                      onChange={(e) =>
-                        setDeleting({
-                          ...deleting,
-                          picked: e.target.checked
-                            ? [...deleting.picked, a.id]
-                            : deleting.picked.filter((x) => x !== a.id),
-                        })
-                      }
-                    />
-                    {a.title}
-                  </label>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="flex gap-2">
-            <button type="button" className={`${quiet} text-red-700`} onClick={() => void confirmDelete()}>
-              Delete channel
-            </button>
-            <button type="button" className={quiet} onClick={() => setDeleting(null)}>
-              Cancel
-            </button>
-          </div>
-        </section>
+        <DeleteChoice
+          label="Delete channel"
+          heading={`Delete "${deleting.channel.name}" and its history? It made ${deleting.artifacts.length} ${deleting.artifacts.length === 1 ? "artifact" : "artifacts"}.`}
+          confirmLabel="Delete channel"
+          artifacts={deleting.artifacts}
+          onConfirm={(ids) => void confirmDelete(ids)}
+          onCancel={() => setDeleting(null)}
+        />
       )}
       <div className="flex gap-2">
         <button type="button" className={quiet} aria-pressed={!showArchived} onClick={() => setShowArchived(false)}>
@@ -223,25 +174,33 @@ function ChannelList() {
                 {c.name}
               </a>
             )}
-            <div className="flex flex-wrap gap-2">
-              {c.archivedAt ? (
-                <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
-                  Restore
+            {c.goalId ? (
+              <p className="text-sm text-slate-600">A goal's channel. Open it to see or delete the goal.</p>
+            ) : (
+              <div className="flex flex-wrap gap-2">
+                {c.archivedAt ? (
+                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/restore`, "POST")}>
+                    Restore
+                  </button>
+                ) : (
+                  <>
+                    <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
+                      Rename
+                    </button>
+                    <button
+                      type="button"
+                      className={quiet}
+                      onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}
+                    >
+                      Archive
+                    </button>
+                  </>
+                )}
+                <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
+                  Delete
                 </button>
-              ) : (
-                <>
-                  <button type="button" className={quiet} onClick={() => setRenaming({ id: c.id, name: c.name })}>
-                    Rename
-                  </button>
-                  <button type="button" className={quiet} onClick={() => act(`/api/channels/${c.id}/archive`, "POST")}>
-                    Archive
-                  </button>
-                </>
-              )}
-              <button type="button" className={`${quiet} text-red-700`} onClick={() => void askDelete(c)}>
-                Delete
-              </button>
-            </div>
+              </div>
+            )}
           </li>
         ))}
       </ul>
@@ -298,6 +257,7 @@ type SentContext = {
     layers: { name: string; tokens: number }[];
     runsDropped: number;
     breaks: string[];
+    statementVersion?: number | null;
     overflow: { layer: string; detail: string }[];
   };
   messages: SentMessage[] | null;
@@ -335,6 +295,7 @@ function SentView({ runId }: { runId: string }) {
             Step {req.step}: {req.report.layers.map((l) => `${l.name} ${l.tokens}`).join(", ")} of {req.report.budget}{" "}
             tokens
             {req.report.runsDropped ? `; ${req.report.runsDropped} older run(s) left out` : ""}
+            {req.report.statementVersion ? `; scope statement version ${req.report.statementVersion}` : ""}
             {req.report.breaks.length ? `; prompt start changed: ${req.report.breaks.join(", ")}` : ""}
           </p>
           {req.messages ? (
@@ -364,27 +325,79 @@ function SentView({ runId }: { runId: string }) {
   );
 }
 
+type Edits = Record<string, unknown>;
+type GoalArgs = { title?: string; brief?: string; schedule?: { cron?: string; prompt?: string } };
+
+/** The proposed goal's fields as the same form the Goals screen draws; what changed comes back as the edits to send. */
+function GoalDraftEditor({ args, onApprove }: { args: GoalArgs; onApprove: (edits: Edits | undefined) => void }) {
+  const start: GoalValues = {
+    title: args.title ?? "",
+    brief: args.brief ?? "",
+    cron: args.schedule?.cron ?? "",
+    prompt: args.schedule?.prompt ?? "",
+  };
+  const [values, setValues] = useState(start);
+  const edits = (): Edits | undefined => {
+    const out: Edits = {};
+    if (values.title !== start.title) out.title = values.title;
+    if (values.brief !== start.brief) out.brief = values.brief;
+    if (values.cron !== start.cron || values.prompt !== start.prompt)
+      out.schedule = {
+        cron: values.cron.trim(),
+        prompt: values.prompt.trim() || values.brief.trim() || values.title.trim(),
+      };
+    return Object.keys(out).length ? out : undefined;
+  };
+  return (
+    <div className="flex flex-col gap-2">
+      <GoalFields values={values} onChange={setValues} schedulesAvailable />
+      <div className="flex gap-2">
+        <button type="button" className={primary} onClick={() => onApprove(edits())}>
+          Approve
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ApprovalCard(props: {
   tool: string;
   reason: string;
   args: unknown;
+  editable: boolean;
   decision: string | null;
   ended: boolean;
-  onDecide: (decision: "approve" | "decline") => void;
+  onDecide: (decision: "approve" | "decline", edits?: Edits) => void;
 }) {
-  const { tool, reason, args, decision, ended, onDecide } = props;
+  const { tool, reason, args, editable, decision, ended, onDecide } = props;
+  const open = !decision && !ended;
+  // Only a goal proposal has fields to change so far; any other tool keeps the plain card.
+  const goalEditor = open && editable && tool === "propose_goal";
   return (
     <section
       aria-label={`Approval for ${tool}`}
       className="flex flex-col gap-2 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm"
     >
       <p className="font-medium">{reason}</p>
-      <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">{JSON.stringify(args, null, 2)}</pre>
+      {goalEditor ? (
+        <>
+          <GoalDraftEditor args={args as GoalArgs} onApprove={(edits) => onDecide("approve", edits)} />
+          <div className="flex gap-2">
+            <button type="button" className={quiet} onClick={() => onDecide("decline")}>
+              Decline
+            </button>
+          </div>
+        </>
+      ) : (
+        <pre className="overflow-x-auto whitespace-pre-wrap text-xs text-slate-700">
+          {JSON.stringify(args, null, 2)}
+        </pre>
+      )}
       {decision ? (
         <p className="text-xs text-slate-600">{decision === "approve" ? "Approved." : "Declined."}</p>
       ) : ended ? (
         <p className="text-xs text-slate-600">Not answered before the run ended.</p>
-      ) : (
+      ) : goalEditor ? null : (
         <div className="flex gap-2">
           <button type="button" className={primary} onClick={() => onDecide("approve")}>
             Approve
@@ -398,12 +411,160 @@ function ApprovalCard(props: {
   );
 }
 
+type ModelLimits = { model: string; contextWindow: number; maxSteps: number; maxTokens: number; maxMillis: number };
+
+type PurposeVersion = {
+  text: string;
+  author: "user" | "agent";
+  confirmed: boolean;
+  version: number;
+  createdAt: string;
+};
+type Purpose = { current: PurposeVersion | null; versions: PurposeVersion[] };
+
+/** The channel's purpose statement under its name: shown as a draft until the user has written or confirmed it, editable in place. */
+function PurposeStatement({ id, readOnly }: { id: string; readOnly: boolean }) {
+  const [purpose, setPurpose] = useState<Purpose | null>(null);
+  const [editing, setEditing] = useState<string | null>(null);
+  const [problem, setProblem] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A goal's channel answers 409: it has a brief instead, so nothing is shown here.
+    api<Purpose>(`/api/channels/${id}/purpose`)
+      .then(setPurpose)
+      .catch(() => setPurpose(null));
+  }, [id]);
+
+  const act = async (path: string, method: string, body?: unknown) => {
+    try {
+      setPurpose(await api<Purpose>(`/api/channels/${id}/purpose${path}`, { method, body }));
+      setEditing(null);
+      setProblem(null);
+    } catch (e) {
+      setProblem(String((e as Error).message));
+    }
+  };
+
+  if (!purpose) return null;
+  const current = purpose.current;
+  const draft = current?.author === "agent" && !current.confirmed;
+  return (
+    <div className="flex flex-col gap-2 text-sm text-slate-600">
+      {editing === null ? (
+        <>
+          <p>
+            {current ? current.text : "No purpose statement yet. One is drafted after the first few exchanges."}
+            {draft && <span className="ml-2 text-xs uppercase text-slate-500">draft</span>}
+          </p>
+          {!readOnly && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => setEditing(current?.text ?? "")}
+              >
+                {current ? "Edit purpose" : "Write purpose"}
+              </button>
+              <button
+                type="button"
+                className="min-h-11 rounded-lg border border-slate-300 px-3"
+                onClick={() => act("/draft", "POST")}
+              >
+                Draft one
+              </button>
+            </div>
+          )}
+        </>
+      ) : (
+        <form
+          className="flex flex-col gap-2"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void act("", "PUT", { text: editing });
+          }}
+        >
+          <textarea
+            aria-label="Purpose statement"
+            className="min-h-24 rounded-lg border border-slate-300 p-2"
+            value={editing}
+            onChange={(e) => setEditing(e.target.value)}
+          />
+          <div className="flex gap-2">
+            <button type="submit" className="min-h-11 rounded-lg bg-slate-900 px-3 text-white">
+              Save purpose
+            </button>
+            <button
+              type="button"
+              className="min-h-11 rounded-lg border border-slate-300 px-3"
+              onClick={() => setEditing(null)}
+            >
+              Cancel
+            </button>
+          </div>
+        </form>
+      )}
+      {purpose.versions.length > 1 && (
+        <details>
+          <summary className="cursor-pointer">Earlier versions</summary>
+          <ul className="mt-2 flex flex-col gap-2">
+            {[...purpose.versions]
+              .reverse()
+              .filter((v) => v.version !== current?.version)
+              .map((v) => (
+                <li key={v.version} className="flex flex-col gap-1 rounded-lg border border-slate-200 p-2">
+                  <p>{v.text}</p>
+                  <p className="text-xs text-slate-500">
+                    Version {v.version}, by {v.author === "agent" ? "Brindle" : "you"},{" "}
+                    {new Date(v.createdAt).toLocaleString()}, {v.confirmed ? "confirmed" : "not confirmed"}
+                  </p>
+                  {!readOnly && (
+                    <button
+                      type="button"
+                      aria-label={`Restore version ${v.version}`}
+                      className="min-h-11 self-start rounded-lg border border-slate-300 px-3"
+                      onClick={() => act(`/versions/${v.version}/restore`, "POST")}
+                    >
+                      Restore
+                    </button>
+                  )}
+                </li>
+              ))}
+          </ul>
+        </details>
+      )}
+      <Problem message={problem} />
+    </div>
+  );
+}
+
+/** The first line of a branched channel's transcript: where it came from, with a link back, and a note when the history could not be carried over. */
+function BranchNote({ json }: { json: string }) {
+  const b = JSON.parse(json) as {
+    fromChannelId: string;
+    fromChannelName: string;
+    fromRunId: string;
+    fromRunNumber?: number;
+    seeded: boolean;
+  };
+  return (
+    <p role="note" className="text-sm text-slate-600">
+      Branched from{" "}
+      <a className="underline" href={`#/channels/${b.fromChannelId}/runs/${b.fromRunId}`}>
+        {b.fromChannelName}
+      </a>
+      {b.fromRunNumber ? `, run ${b.fromRunNumber}` : ""}.
+      {b.seeded ? "" : " The history could not be carried over, so this channel starts empty."}
+    </p>
+  );
+}
+
 function ChannelView({ id }: { id: string }) {
   const [channel, setChannel] = useState<Channel | null>(null);
   const [runs, setRuns] = useState<Run[]>([]);
   const [text, setText] = useState("");
   const [problem, setProblem] = useState<string | null>(null);
   const [defaultModel, setDefaultModel] = useState<string | null>(null);
+  const [limits, setLimits] = useState<ModelLimits | null>(null);
   const [target, setTarget] = useState(() => runIdFromHash(window.location.hash));
   const [configured, setConfigured] = useState<ModelInfo[]>([]);
   const source = useRef<AuthedEventSource | null>(null);
@@ -496,13 +657,25 @@ function ChannelView({ id }: { id: string }) {
     }
   };
 
-  const decide = async (runId: string, callId: string, decision: "approve" | "decline") => {
+  const decide = async (runId: string, callId: string, decision: "approve" | "decline", edits?: Edits) => {
     try {
-      await api(`/api/runs/${runId}/approvals/${callId}`, { method: "POST", body: { decision } });
+      await api(`/api/runs/${runId}/approvals/${callId}`, {
+        method: "POST",
+        body: { decision, ...(edits && { edits }) },
+      });
     } catch (err) {
       setProblem((err as Error).message);
     }
   };
+
+  // Reloaded when the channel's model changes, since the numbers belong to the model.
+  const channelModel = channel?.model;
+  useEffect(() => {
+    void channelModel;
+    api<ModelLimits | null>(`/api/channels/${id}/model-settings`)
+      .then(setLimits)
+      .catch(() => setLimits(null));
+  }, [id, channelModel]);
 
   const chooseModel = async (model: string | null) => {
     try {
@@ -510,6 +683,21 @@ function ChannelView({ id }: { id: string }) {
       setProblem(null);
     } catch (err) {
       setProblem((err as Error).message);
+    }
+  };
+
+  const [branching, setBranching] = useState(false);
+  const branchFrom = async (runId: string) => {
+    // The request waits for the summary calls, which can take minutes: a second tap would make a second channel.
+    if (branching) return;
+    setBranching(true);
+    try {
+      const made = await api<Channel>(`/api/channels/${id}/branch`, { method: "POST", body: { runId } });
+      window.location.hash = `#/channels/${made.id}`;
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBranching(false);
     }
   };
 
@@ -523,6 +711,9 @@ function ChannelView({ id }: { id: string }) {
         ← All channels
       </a>
       <h1 className="text-2xl font-semibold">{channel?.name ?? "Channel"}</h1>
+      {channel?.goalId && <GoalBrief goalId={channel.goalId} channelId={channel.id} />}
+      {channel?.branch && <BranchNote json={channel.branch} />}
+      {channel && <PurposeStatement id={id} readOnly={readOnly} />}
       {channel && (
         <div className="flex flex-col gap-2 text-sm text-slate-600">
           <p>Model: {channel.model ?? (defaultModel ? `${defaultModel} (default)` : "none configured")}</p>
@@ -530,6 +721,12 @@ function ChannelView({ id }: { id: string }) {
             <p role="note" className="text-amber-700">
               {channel.model} is no longer configured, so this channel uses the default
               {defaultModel ? ` (${defaultModel})` : ""}.
+            </p>
+          )}
+          {limits && typeof limits.contextWindow === "number" && (
+            <p>
+              Window {limits.contextWindow.toLocaleString("en-US")} tokens · up to {limits.maxSteps} steps,{" "}
+              {limits.maxTokens.toLocaleString("en-US")} tokens and {Math.round(limits.maxMillis / 60_000)} min per run
             </p>
           )}
           {!readOnly && (
@@ -568,10 +765,11 @@ function ChannelView({ id }: { id: string }) {
                     key={ev.seq}
                     tool={String(d.tool)}
                     reason={String(d.reason)}
-                    args={d.arguments}
+                    args={answer && parse(answer).arguments ? parse(answer).arguments : d.arguments}
+                    editable={d.editable === true}
                     decision={answer ? String(parse(answer).decision) : null}
                     ended={run.status !== "running" && run.status !== "waiting"}
-                    onDecide={(decision) => decide(run.id, String(d.callId), decision)}
+                    onDecide={(decision, edits) => decide(run.id, String(d.callId), decision, edits)}
                   />
                 );
               }
@@ -586,10 +784,25 @@ function ChannelView({ id }: { id: string }) {
                 </p>
               )}
             {run.status === "cancelled" && <p className="text-xs text-slate-500">Cancelled.</p>}
+            {run.status === "done" && !readOnly && !channel?.goalId && (
+              <button
+                type="button"
+                className={`${quiet} self-start`}
+                disabled={branching}
+                onClick={() => branchFrom(run.id)}
+              >
+                New channel from here
+              </button>
+            )}
             {run.status !== "running" && run.status !== "waiting" && <SentView runId={run.id} />}
           </section>
         ))}
       </div>
+      {branching && (
+        <p role="status" className="text-sm text-slate-600">
+          Writing the new channel's summary…
+        </p>
+      )}
       <Problem message={problem} />
       {readOnly ? (
         <p className="text-sm text-slate-600">This channel is archived. Restore it to send a message.</p>
