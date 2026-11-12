@@ -8,7 +8,8 @@ const effectLevels: readonly string[] = ["read", "local", "external"];
 /** Deliberately narrow: a tool reaches Brindle's state through functions it is given, never the database. */
 export type ToolContext = {
   runId: string;
-  scope: { kind: "channel"; id: string };
+  /** A goal-scoped run (a scheduled one) names the goal; any other run names its channel. */
+  scope: { kind: "channel" | "goal"; id: string };
   signal: AbortSignal;
   log: (message: string) => void;
   /** Adds an event to the run's stream, such as the artifact a tool just made. */

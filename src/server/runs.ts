@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getChannel } from "./channels.js";
 import { defaultHousekeepingMillis, foldIfNeeded, historyShare, latestSummary, modelSummarizer } from "./compaction.js";
 import {
@@ -13,8 +13,9 @@ import {
   recordContext,
 } from "./context.js";
 import type { Db } from "./db/index.js";
-import { events, runs } from "./db/schema.js";
+import { events, goals, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall, type Usage } from "./model/adapter.js";
+import type { SchedulerHooks } from "./scheduler.js";
 import { scopeStatementFor } from "./scope-statements.js";
 import { describeToday } from "./time-zone.js";
 import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
@@ -38,6 +39,8 @@ export type RunLimits = {
   model?: string;
   /** How long a run may wait for an approval before it ends as "approval not given". */
   approvalMillis: number;
+  /** The same for a scheduled run: nobody is watching, so one unattended question must not hold its goal for a day. */
+  scheduledApprovalMillis: number;
 };
 
 export const defaultLimits: RunLimits = {
@@ -46,6 +49,7 @@ export const defaultLimits: RunLimits = {
   maxMillis: 120_000,
   contextWindow: defaultContextWindow,
   approvalMillis: 24 * 60 * 60 * 1000,
+  scheduledApprovalMillis: 12 * 60 * 60 * 1000,
 };
 
 export class RunError extends Error {
@@ -166,6 +170,8 @@ export class RunEngine {
   private readonly listeners = new Map<string, Set<Listener>>();
   private readonly settled = new Map<string, Promise<void>>();
   private readonly live = new Map<string, LiveRun>();
+  /** Task prompts of scheduled runs prepared but not yet begun; lost on a crash, which is what recover() expects. */
+  private readonly prepared = new Map<string, string>();
   /** Called after a run ends as done, for housekeeping such as drafting a purpose statement. Must not throw into the run. */
   onRunDone?: (channelId: string) => void;
   /** Called when a run ends in any state but cancelled, with its id: reports are written from it. Must not throw into the run. */
@@ -217,6 +223,8 @@ export class RunEngine {
       stopReason: null,
       startedAt: now.toISOString(),
       endedAt: null,
+      goalId: null,
+      trigger: "user",
       tokens: 0,
     };
     this.db.insert(runs).values(run).run();
@@ -229,6 +237,109 @@ export class RunEngine {
       this.loop(run.id, channelId, model, past, [{ role: "user", content: message }], controller),
     );
     return run;
+  }
+
+  /**
+   * The scheduler's prepareRun hook: inside its transaction, write the row of a goal-scoped run triggered by the
+   * schedule, in the goal's channel. It writes no event, because an event is how recover() tells a run that began
+   * from one that a crash cut off before beginRun.
+   */
+  prepareScheduled(goalId: string, prompt: string, now = new Date()): string {
+    const goal = this.db.select().from(goals).where(eq(goals.id, goalId)).get();
+    if (!goal) throw new RunError("not_found", "No such goal.");
+    if (goal.status !== "active") throw new RunError("busy", "The goal is archived.");
+    const message = prompt.trim();
+    if (!message) throw new RunError("invalid_text", "The schedule's task prompt is empty.");
+    // Checked now so a missing model is a failed_to_start in the log, not a run that fails at once.
+    this.modelFor(getChannel(this.db, goal.channelId).model);
+    const id = randomUUID();
+    this.db
+      .insert(runs)
+      .values({
+        id,
+        channelId: goal.channelId,
+        status: "running",
+        stopReason: null,
+        startedAt: now.toISOString(),
+        endedAt: null,
+        goalId,
+        trigger: "schedule",
+      })
+      .run();
+    this.prepared.set(id, message);
+    return id;
+  }
+
+  /** The scheduler's beginRun hook, after its transaction commits: the task prompt becomes the run's user message. */
+  beginScheduled(runId: string, now = new Date()): void {
+    const message = this.prepared.get(runId);
+    if (message === undefined) throw new RunError("not_found", "No prepared run with that id.");
+    this.prepared.delete(runId);
+    const run = this.get(runId);
+    const model = this.modelFor(getChannel(this.db, run.channelId).model);
+    const past = this.history(run.channelId, runId);
+    this.append(runId, "message", { text: message }, now);
+    const controller = new AbortController();
+    this.active.set(runId, controller);
+    this.settled.set(
+      runId,
+      this.loop(runId, run.channelId, model, past, [{ role: "user", content: message }], controller),
+    );
+  }
+
+  /** What the server builds its scheduler with, so the startup wiring and the tests are the same code. */
+  schedulerHooks(): SchedulerHooks {
+    return {
+      prepareRun: (schedule) => this.prepareScheduled(schedule.goalId, schedule.prompt),
+      beginRun: (runId) => this.beginScheduled(runId),
+      goalBusy: (goalId) => this.goalBusy(goalId),
+    };
+  }
+
+  /** The scheduler's goalBusy hook: any run going in the goal's channel, scheduled or the user's, waiting or not. */
+  goalBusy(goalId: string): boolean {
+    const goal = this.db.select().from(goals).where(eq(goals.id, goalId)).get();
+    if (!goal) return false;
+    const going = this.db
+      .select({ id: runs.id })
+      .from(runs)
+      .where(and(eq(runs.channelId, goal.channelId), inArray(runs.status, ["running", "waiting"])))
+      .limit(1)
+      .get();
+    return going !== undefined;
+  }
+
+  /**
+   * A run left waiting on an approval by a restart has no loop, so no timer: without this a scheduled run's
+   * question would hold its goal until someone answered. Each gets its timeout counted from when it asked.
+   */
+  watchWaiting(now = new Date()): number {
+    const waiting = this.db.select().from(runs).where(eq(runs.status, "waiting")).all();
+    for (const run of waiting) {
+      const asked = [...this.storedEvents(run.id)].reverse().find((e) => e.type === "approval_request");
+      const from = asked ? Date.parse(asked.createdAt) : now.getTime();
+      this.expireAt(run.id, from + this.approvalMillis(run), now.getTime());
+    }
+    return waiting.length;
+  }
+
+  private expireAt(runId: string, deadline: number, now: number) {
+    // setTimeout treats anything past about 24.8 days as 1ms; wait in steps instead.
+    const delay = Math.min(Math.max(0, deadline - now), 2 ** 31 - 1);
+    const timer = setTimeout(() => {
+      // Answered since the restart: the loop that decide() resumed has its own timer.
+      if (this.active.has(runId)) return;
+      const run = this.db.select().from(runs).where(eq(runs.id, runId)).get();
+      if (run?.status !== "waiting") return;
+      if (Date.now() < deadline) return this.expireAt(runId, deadline, Date.now());
+      this.stopForLimit(runId, "approval not given");
+    }, delay);
+    timer.unref?.();
+  }
+
+  private approvalMillis(run: Run): number {
+    const limits = this.limitsFor(getChannel(this.db, run.channelId).model);
+    return run.trigger === "schedule" ? limits.scheduledApprovalMillis : limits.approvalMillis;
   }
 
   /** Resolves once the run's loop has ended; tests use it instead of sleeping. */
@@ -411,6 +522,8 @@ export class RunEngine {
     resume?: Resume,
   ): Promise<void> {
     const limits = this.limitsFor(getChannel(this.db, channelId).model);
+    const run = this.get(runId);
+    const approvalMillis = this.approvalMillis(run);
     const { maxSteps, maxTokens, maxMillis } = limits;
     const state: LiveRun = {
       decisions: new Map(resume?.decisions),
@@ -437,7 +550,9 @@ export class RunEngine {
     let tokens = resume?.tokens ?? 0;
     let countedAllInput = resume?.countedAllInput ?? false;
     let carried = resume?.calls;
-    const scope = { kind: "channel", id: channelId } as const;
+    const scope = run.goalId
+      ? ({ kind: "goal", id: run.goalId } as const)
+      : ({ kind: "channel", id: channelId } as const);
     try {
       for (let step = resume?.step ?? 1; ; step++) {
         let calls: ToolCall[];
@@ -540,7 +655,7 @@ export class RunEngine {
               if (!state.decisions.has(call.id)) {
                 pause();
                 this.setStatus(runId, "waiting");
-                await this.awaitDecision(call.id, state, controller);
+                await this.awaitDecision(call.id, state, controller, approvalMillis);
                 this.setStatus(runId, "running");
                 arm();
               }
@@ -604,9 +719,14 @@ export class RunEngine {
   }
 
   /** Resolves when the user answers the call; rejects with the abort reason on cancel or when the wait runs out. */
-  private awaitDecision(callId: string, state: LiveRun, controller: AbortController): Promise<void> {
+  private awaitDecision(
+    callId: string,
+    state: LiveRun,
+    controller: AbortController,
+    approvalMillis: number,
+  ): Promise<void> {
     const signal = controller.signal;
-    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), this.limitsFor(null).approvalMillis);
+    const giveUp = setTimeout(() => controller.abort(new ApprovalTimeout()), approvalMillis);
     return new Promise<void>((resolve, reject) => {
       const onAbort = () => reject(signal.reason);
       if (signal.aborted) return onAbort();

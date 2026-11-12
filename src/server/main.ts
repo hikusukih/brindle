@@ -23,6 +23,7 @@ import {
 import { PurposeDrafter } from "./purpose.js";
 import { reportRunEnded } from "./reports.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
+import { Scheduler } from "./scheduler.js";
 import { getSetting } from "./settings.js";
 import { getTimeZone } from "./time-zone.js";
 import { builtInTools } from "./tools/index.js";
@@ -120,16 +121,28 @@ const purpose = new PurposeDrafter(db, (channelId) => {
     millis: 10 * 60_000,
   };
 });
-// No channel yet, so the utility model, else the default.
-const goalDrafter = new GoalDrafter(() => ({
-  model: models.resolveForChannel(utilitySpec ?? null),
-  millis: 10 * 60_000,
-}));
+// Cron is read in the user's zone. Until the app is first opened there is none; UTC stands in, and the first
+// browser's zone moves every schedule through onTimeZoneChange below.
+const scheduler = new Scheduler(db, engine.schedulerHooks(), { timeZone: getTimeZone(db) ?? "UTC" });
+// No channel yet, so the utility model, else the default. The scheduler lets a drafted schedule be checked.
+const goalDrafter = new GoalDrafter(
+  () => ({
+    model: models.resolveForChannel(utilitySpec ?? null),
+    millis: 10 * 60_000,
+  }),
+  scheduler,
+);
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
 engine.onRunEnded = (runId) => reportRunEnded(db, runId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
+engine.watchWaiting();
+
+// After the engine's recovery, so a run it marks as interrupted is told apart from one that never began.
+const failedToStart = scheduler.recover();
+if (failedToStart > 0) console.log(`Recorded ${failedToStart} scheduled run(s) that never began as failed to start.`);
+scheduler.start();
 const app = createApp({
   db,
   engine,
@@ -145,6 +158,8 @@ const app = createApp({
     update: (spec, patch) => updateModelSettings(settings, modelSettingsPath, spec, patch, { baseUrl: localServer }),
   },
   artifacts,
+  scheduler,
+  onTimeZoneChange: (timeZone) => scheduler.setTimeZone(timeZone),
   purpose,
   // The default model stands in for the source channel's own here, since a seed call isn't tied to one run.
   branching: (input) =>
