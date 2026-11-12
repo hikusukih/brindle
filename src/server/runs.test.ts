@@ -7,7 +7,7 @@ import { openDatabase } from "./db/index.js";
 import { channels, events, runs } from "./db/schema.js";
 import { type ModelAdapter, ModelError } from "./model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "./model/scripted.js";
-import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
+import { countedTokens, defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 
 function setup(fixture: ScriptedFixture, limits: Partial<RunLimits> = {}, model?: ModelAdapter) {
   const db = openDatabase(":memory:");
@@ -129,7 +129,67 @@ describe("run engine", () => {
       );
       const run = engine.start(channel.id, "x");
       await engine.whenSettled(run.id);
-      expect(engine.get(run.id)).toMatchObject({ status: "stopped", stopReason: "token limit (100) reached" });
+      expect(engine.get(run.id)).toMatchObject({
+        status: "stopped",
+        stopReason:
+          "token limit (100) reached, counting all input, since the server reported no cached count, plus output",
+      });
+    });
+
+    // The same long prompt is re-sent at every tool step; a server that serves it from cache did not read it again.
+    it("counts only uncached input, so a prompt served from cache does not trip the limit", async () => {
+      const cached = { inputTokens: 60, outputTokens: 5, cachedInputTokens: 55 };
+      const { engine, channel } = setup(
+        {
+          turns: [
+            { toolCalls: [call("c1")], usage: { inputTokens: 60, outputTokens: 5, cachedInputTokens: 0 } },
+            { toolCalls: [call("c2")], usage: cached },
+            { toolCalls: [call("c3")], usage: cached },
+            { text: ["done"], usage: cached },
+          ],
+        },
+        { maxTokens: 100 },
+      );
+      const run = engine.start(channel.id, "x");
+      await engine.whenSettled(run.id);
+      expect(engine.get(run.id)).toMatchObject({ status: "done", tokens: 65 + 10 + 10 + 10 });
+    });
+
+    it("counts all input when the server reports no cached count, and says so when it stops", async () => {
+      const uncounted = { inputTokens: 60, outputTokens: 5 };
+      const { engine, channel } = setup(
+        {
+          turns: [
+            { toolCalls: [call("c1")], usage: uncounted },
+            { toolCalls: [call("c2")], usage: uncounted },
+            { text: ["done"], usage: uncounted },
+          ],
+        },
+        { maxTokens: 100 },
+      );
+      const run = engine.start(channel.id, "x");
+      await engine.whenSettled(run.id);
+      expect(engine.get(run.id)).toMatchObject({ status: "stopped", tokens: 130 });
+      expect(engine.get(run.id).stopReason).toContain("counting all input");
+    });
+
+    it("says it counted uncached input when every step had a cached count", async () => {
+      const { engine, channel } = setup(
+        {
+          turns: [
+            { toolCalls: [call("c1")], usage: { inputTokens: 90, outputTokens: 20, cachedInputTokens: 0 } },
+            { text: ["no"] },
+          ],
+        },
+        { maxTokens: 100 },
+      );
+      const run = engine.start(channel.id, "x");
+      await engine.whenSettled(run.id);
+      expect(engine.get(run.id)).toMatchObject({
+        status: "stopped",
+        stopReason: "token limit (100) reached, counting uncached input plus output",
+        tokens: 110,
+      });
     });
 
     it("stops at the time limit and cancels the model call", async () => {
@@ -235,5 +295,25 @@ describe("GET /api/channels/:id/runs", () => {
     expect(JSON.parse(body[1]?.events[0]?.data ?? "null")).toEqual({ text: "second" });
 
     expect((await app.request("/api/channels/nope/runs")).status).toBe(404);
+  });
+});
+
+describe("countedTokens", () => {
+  it("counts uncached input plus output when the server reports a cached count", () => {
+    expect(countedTokens({ inputTokens: 1_000, outputTokens: 50, cachedInputTokens: 900 })).toEqual({
+      tokens: 150,
+      allInput: false,
+    });
+  });
+
+  it("counts all input when the cached count is absent, and says so", () => {
+    expect(countedTokens({ inputTokens: 1_000, outputTokens: 50 })).toEqual({ tokens: 1_050, allInput: true });
+  });
+
+  it("never counts below the output when a server reports more cached than sent", () => {
+    expect(countedTokens({ inputTokens: 10, outputTokens: 5, cachedInputTokens: 20 })).toEqual({
+      tokens: 5,
+      allInput: false,
+    });
   });
 });
