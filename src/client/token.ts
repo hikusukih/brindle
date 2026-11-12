@@ -1,9 +1,11 @@
 const key = "brindle-token";
 
-// sessionStorage can throw (private windows, blocked storage); the app then asks again on each load.
+// localStorage, not sessionStorage: an installed app that is closed and reopened starts a new session, and asking
+// for the token each time would make the phone unusable. Storage can throw (private windows, blocked storage); the
+// app then asks again on each load.
 export function getToken(): string | null {
   try {
-    return window.sessionStorage.getItem(key);
+    return window.localStorage.getItem(key);
   } catch {
     return null;
   }
@@ -11,8 +13,8 @@ export function getToken(): string | null {
 
 export function setToken(token: string | null) {
   try {
-    if (token) window.sessionStorage.setItem(key, token);
-    else window.sessionStorage.removeItem(key);
+    if (token) window.localStorage.setItem(key, token);
+    else window.localStorage.removeItem(key);
   } catch {}
 }
 

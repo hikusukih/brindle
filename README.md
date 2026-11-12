@@ -20,7 +20,7 @@ docker run -d --name brindle --restart unless-stopped \
 
 Open `http://127.0.0.1:8787`. The page shows a greeting from the server and the time it first started.
 
-- Every `/api` route except `/api/health` needs a login token, sent in an `Authorization: Bearer` header (never a cookie). Set `BRINDLE_TOKEN` (at least 16 characters) to choose it, for example `-e BRINDLE_TOKEN=...` on `docker run`. Otherwise the first start generates one and prints it once in the server output (`docker logs brindle`); only its hash is kept, so if you lose it, set `BRINDLE_TOKEN` to replace it. The page asks for the token once and keeps it for that browser tab's session. The server compares tokens in constant time. Inside the container the server listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only; put it behind HTTPS before exposing it further, since the token travels with every request.
+- Every `/api` route except `/api/health` needs a login token, sent in an `Authorization: Bearer` header (never a cookie). Set `BRINDLE_TOKEN` (at least 16 characters) to choose it, for example `-e BRINDLE_TOKEN=...` on `docker run`. Otherwise the first start generates one and prints it once in the server output (`docker logs brindle`); only its hash is kept, so if you lose it, set `BRINDLE_TOKEN` to replace it. The page asks for the token once and keeps it in that browser's storage, so an installed app stays logged in after it is closed; it asks again only when the server refuses the token. The server compares tokens in constant time. Inside the container the server listens on all interfaces so Docker can forward to it, which is why the `-p` above publishes it on the host's loopback only; put it behind HTTPS before exposing it further, since the token travels with every request (see [Reaching Brindle from a phone](#reaching-brindle-from-a-phone)).
 - Everything Brindle keeps lives in the `brindle-data` volume, mounted at `/data`. Removing the container keeps it; `docker volume rm brindle-data` deletes it.
 - To upgrade, pull the new code, rebuild the image, then `docker rm -f brindle` and run the same `docker run` again. Database migrations apply on startup. Before they run, the server copies the database to `backups/` in the data directory, named for the schema it was at and the time (such as `brindle-20261112T010203Z-0008_brainy_susan_delgado.sqlite`), keeps the last three copies, and logs where the copy went; if the copy fails, the server does not start and says why. To roll back an upgrade, stop the container, run the previous image again, and put the copy in place of `brindle.sqlite` in the data directory (delete `brindle.sqlite-wal` and `brindle.sqlite-shm` beside it first), since an older version cannot read a database a newer one has migrated. An install from before logins existed gets its token on the first start of the new version: it is printed once in the server output, or set `BRINDLE_TOKEN` to choose it.
 - The image runs as an unprivileged user and needs no compiler: the SQLite driver's prebuilt binaries cover amd64 and arm64.
@@ -35,6 +35,17 @@ docker run --rm -v bridle-data:/from -v brindle-data:/to node:22-bookworm-slim c
 ```
 
 Then `docker rm -f bridle`, run the quickstart above, and `docker volume rm bridle-data` once the new install looks right.
+
+## Reaching Brindle from a phone
+
+A phone installs Brindle as an app only from an HTTPS address, and the login token travels with every request, so the phone should never reach the server over plain HTTP. Brindle has no TLS of its own: it keeps serving plain HTTP on the host's loopback address, and one of these two setups puts HTTPS in front of it.
+
+- **A private overlay network.** Join the host and the phone to the same private overlay network (a mesh VPN), and use its feature that serves a local port under an HTTPS name with a certificate it manages, pointed at `http://127.0.0.1:8787`. The address looks like `https://brindle-host.overlay.example`, works only on devices in your network, and needs no open port on your router. This is the simpler setup for one person.
+- **A reverse proxy that terminates TLS.** Run a reverse proxy on the host with a certificate for a name you control, such as `https://brindle.example.com`, forwarding everything to `http://127.0.0.1:8787`. Runs stream their events over one long response, so turn off response buffering for `/api/` and allow a read timeout of several minutes; otherwise replies arrive all at once or are cut off. If the name is reachable from the internet, the login token is the only thing in front of your data: choose a long `BRINDLE_TOKEN`.
+
+Either way, leave the `-p 127.0.0.1:8787:8787` from the quickstart as it is, so the only way in is through HTTPS. Brindle does not read `X-Forwarded-*` headers and builds no absolute links, so neither setup needs any configuration on Brindle's side.
+
+Then, on the phone, open the HTTPS address, enter the login token once, and use the browser's "Add to Home Screen" or "Install app". The installed app opens without the browser's bars and stays logged in after it is closed. To log a phone out, set a new `BRINDLE_TOKEN` and restart: every device is asked for the new one.
 
 ## Quickstart from source
 

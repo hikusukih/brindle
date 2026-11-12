@@ -8,7 +8,7 @@ import { getToken } from "./token";
 
 const token = "test-token-1234abcd1234abcd";
 
-beforeEach(() => window.sessionStorage.clear());
+beforeEach(() => window.localStorage.clear());
 afterEach(() => {
   cleanup();
   vi.unstubAllGlobals();
@@ -23,7 +23,7 @@ const server = () =>
   });
 
 describe("LoginGate", () => {
-  it("asks once, keeps the token for the session, and sends it as a header", async () => {
+  it("asks once, keeps the token, and sends it as a header", async () => {
     const fetchMock = server();
     vi.stubGlobal("fetch", fetchMock);
     render(
@@ -48,8 +48,33 @@ describe("LoginGate", () => {
     );
   });
 
+  // An installed app that is closed and reopened is a new browsing session: only localStorage survives it.
+  it("keeps the token where a closed and reopened app still finds it", async () => {
+    vi.stubGlobal("fetch", server());
+    const first = render(
+      <LoginGate>
+        <p>inside</p>
+      </LoginGate>,
+    );
+    fireEvent.change(await screen.findByLabelText("Login token"), { target: { value: token } });
+    fireEvent.click(screen.getByRole("button", { name: "Continue" }));
+    expect(await screen.findByText("inside")).toBeTruthy();
+    expect(window.localStorage.getItem("brindle-token")).toBe(token);
+    expect(window.sessionStorage.getItem("brindle-token")).toBeNull();
+
+    first.unmount();
+    window.sessionStorage.clear();
+    render(
+      <LoginGate>
+        <p>inside again</p>
+      </LoginGate>,
+    );
+    expect(await screen.findByText("inside again")).toBeTruthy();
+    expect(screen.queryByLabelText("Login token")).toBeNull();
+  });
+
   it("skips the form when the stored token still works, and returns to it when the server refuses", async () => {
-    window.sessionStorage.setItem("brindle-token", token);
+    window.localStorage.setItem("brindle-token", token);
     vi.stubGlobal("fetch", server());
     render(
       <LoginGate>
@@ -57,7 +82,7 @@ describe("LoginGate", () => {
       </LoginGate>,
     );
     expect(await screen.findByText("inside")).toBeTruthy();
-    window.sessionStorage.setItem("brindle-token", "changed-token-1234abcd");
+    window.localStorage.setItem("brindle-token", "changed-token-1234abcd");
     await expect(api("/api/channels")).rejects.toThrow();
     expect(await screen.findByLabelText("Login token")).toBeTruthy();
     expect(getToken()).toBeNull();
@@ -66,7 +91,7 @@ describe("LoginGate", () => {
 
 describe("AuthedEventSource", () => {
   it("sends the token and turns the stream into events", async () => {
-    window.sessionStorage.setItem("brindle-token", token);
+    window.localStorage.setItem("brindle-token", token);
     const body = new ReadableStream({
       start(c) {
         const enc = new TextEncoder();
