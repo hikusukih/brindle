@@ -38,6 +38,7 @@ import {
   restoreGoal,
 } from "./goals.js";
 import type { ModelRegistry } from "./model/config.js";
+import { ModelSettingsError, type ModelSettingsView } from "./model/settings.js";
 import type { PurposeDrafter } from "./purpose.js";
 import { channelTranscript, type RunEngine, RunError, type RunEvent } from "./runs.js";
 import type { Scheduler } from "./scheduler.js";
@@ -60,6 +61,11 @@ type AppOptions = {
   db: Db;
   // Absent until a real adapter is configured; starting a run then answers 503.
   engine?: RunEngine;
+  // The per-model numbers the Settings screen shows and edits; absent, the screen shows none.
+  modelSettings?: {
+    list: () => Promise<ModelSettingsView[]>;
+    update: (spec: string, patch: Record<string, unknown>) => Promise<void>;
+  };
   // What channels may be set to use; absent, setting a channel's model is refused.
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
     defaultSpec?: string;
@@ -94,6 +100,7 @@ export function createApp({
   db,
   engine,
   models,
+  modelSettings,
   artifacts,
   purpose,
   branching,
@@ -238,6 +245,22 @@ export function createApp({
       maxTokens: s.maxTokens,
       maxMillis: s.maxMillis,
     });
+  });
+  app.get("/api/settings/model-settings", async (c) => c.json((await modelSettings?.list()) ?? []));
+  app.put("/api/settings/model-settings", async (c) => {
+    const body = (await c.req.json().catch(() => ({}))) as { model?: unknown; settings?: unknown };
+    if (!modelSettings) throw new HTTPException(400, { message: "No models can be set up on this server." });
+    if (typeof body.model !== "string" || !models?.list().some((m) => m.spec === body.model))
+      throw new HTTPException(400, { message: "model must be one of the configured models." });
+    if (typeof body.settings !== "object" || body.settings === null || Array.isArray(body.settings))
+      throw new HTTPException(400, { message: "settings must be an object." });
+    try {
+      await modelSettings.update(body.model, body.settings as Record<string, unknown>);
+    } catch (error) {
+      if (error instanceof ModelSettingsError) throw new HTTPException(400, { message: error.message });
+      throw error;
+    }
+    return c.json((await modelSettings.list()).find((m) => m.spec === body.model));
   });
   app.put("/api/settings/default-model", async (c) => {
     const { model } = (await c.req.json().catch(() => ({}))) as { model?: unknown };

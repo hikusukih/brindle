@@ -80,4 +80,19 @@ export type Artifact = {
 };
 
 export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+export type ModelSettingValues = {
+  contextWindow?: number;
+  maxSteps?: number;
+  maxTokens?: number;
+  maxMillis?: number;
+  housekeepingMillis?: number;
+  warmCache?: boolean;
+};
+export type ModelSettingsView = {
+  spec: string;
+  configured: ModelSettingValues;
+  effective: Required<ModelSettingValues>;
+  serverWindow: number | null;
+  problem: string | null;
+};
 export type ModelList = { default: string | null; models: ModelInfo[] };
