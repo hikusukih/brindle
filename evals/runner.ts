@@ -3,9 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
+import { branchChannel } from "../src/server/branch.js";
 import { createChannel } from "../src/server/channels.js";
+import { modelSummarizer } from "../src/server/compaction.js";
+import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events, schedules } from "../src/server/db/schema.js";
+import { artifacts, events, goals, runs, schedules, summaries } from "../src/server/db/schema.js";
+import { GoalDrafter } from "../src/server/goal-draft.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
 import { effectFor, mcpTool } from "../src/server/mcp/index.js";
@@ -14,6 +18,7 @@ import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripte
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
 import { Scheduler } from "../src/server/scheduler.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
+import { proposeGoalTool } from "../src/server/tools/goal.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 import { proposeScheduleTool } from "../src/server/tools/schedule.js";
 
@@ -29,14 +34,24 @@ export type RunExpectation = {
   eventTypes?: string[];
   /** Answers to approval requests, in the order the cards appear. */
   approvals?: ("approve" | "decline")[];
+  /** What the user changes on each card before approving, by position in `approvals`; null leaves the card as proposed. */
+  edits?: (Record<string, unknown> | null)[];
   /** Every string must appear in some tool result stored on the run. */
   toolResultIncludes?: string[];
   /** The fake tools that actually ran, in order; an empty list asserts that nothing external was sent. */
   executed?: string[];
   /** Whether the first tool result was cut for the model. */
   toolResultTruncated?: boolean;
+  /** How many summary versions exist after this run, once any fold has finished. Scripted mode only. */
+  summaryVersions?: number;
+  /** Every string must appear in the channel's latest summary. Holds for a real utility model too. */
+  summaryIncludes?: string[];
+  /** Every string must appear in the messages of this run's last request: a fact reached the model, from the summary or the history. */
+  contextIncludes?: string[];
   /** How many schedules exist after this run, for scenarios with a `goal`. Holds against a real model too. */
   schedules?: number;
+  /** How many goals exist after this run. Holds against a real model too. */
+  goals?: number;
   /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
   crons?: string[];
 };
@@ -68,16 +83,45 @@ export type SeedArtifact = {
 /** Runs the scenario in a goal's own channel and adds the real `propose_schedule` tool, with the clock in New York. */
 export type ScenarioGoal = { title: string; brief: string };
 
+/**
+ * Pastes text into the Goals screen's drafting call instead of sending messages. The script's first turn is the model's
+ * answer (ignored live). Whatever the paste says, the call may only return a draft, so `goals` and `schedules` count what
+ * exists afterward and must be 0: creating one takes the user's confirmation, which a scenario never gives.
+ */
+export type GoalDraftCase = {
+  paste: string;
+  expect: {
+    /** Whether a draft came back; a paste that yields nothing usable is refused, not guessed at. Scripted mode only: a real model may refuse a hostile paste, and the properties below still hold then. */
+    drafted: boolean;
+    titleIncludes?: string;
+    /** Scripted mode only: a real model may word the brief differently. */
+    scheduleCron?: string | null;
+    goals: number;
+    schedules: number;
+  };
+};
+
 export type Scenario = {
   name: string;
   description: string;
   messages: string[];
   script: ScriptedFixture;
   limits?: Partial<RunLimits>;
+  /** Turns on rolling compaction with a scripted utility model (or the live model, in live mode). */
+  compaction?: { script: ScriptedFixture };
+  /**
+   * After every message: "New channel from here" on run `fromRun` (1-based) with a utility model that follows `script`,
+   * then `followUp` sent in the new channel. The new channel's last request must contain every `contextIncludes`
+   * string, and the source must still hold every run it had.
+   */
+  branch?: { fromRun: number; script: ScriptedFixture; followUp: string; contextIncludes: string[] };
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
   goal?: ScenarioGoal;
+  goalDraft?: GoalDraftCase;
+  /** Adds the real `propose_goal` tool, in an ordinary channel. */
+  proposeGoal?: boolean;
   expect: RunExpectation[];
 };
 
@@ -152,14 +196,37 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
   );
   const goal = scenario.goal ? createGoal(db, scenario.goal) : undefined;
   if (goal) tools.register(proposeScheduleTool(db, scheduler));
+  if (scenario.proposeGoal) tools.register(proposeGoalTool(db, scheduler));
   const engine = new RunEngine(
     db,
     live ?? new ScriptedModel(scenario.script),
     { ...defaultLimits, ...scenario.limits },
     tools,
+    scenario.compaction ? { utilityModel: live ?? new ScriptedModel(scenario.compaction.script) } : undefined,
   );
   const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
   const failures: string[] = [];
+
+  if (scenario.goalDraft) {
+    const want = scenario.goalDraft.expect;
+    const drafter = new GoalDrafter(
+      () => ({ model: live ?? new ScriptedModel(scenario.script), millis: 60_000 }),
+      scheduler,
+    );
+    const draft = await drafter.draft(scenario.goalDraft.paste).catch(() => null);
+    if (!live && !!draft !== want.drafted)
+      failures.push(`draft ${draft ? "came back" : "was refused"}, expected the opposite`);
+    if (draft && want.titleIncludes && !draft.title.includes(want.titleIncludes))
+      failures.push(`title "${draft.title}" lacks "${want.titleIncludes}"`);
+    if (!live && draft && want.scheduleCron !== undefined && (draft.schedule?.cron ?? null) !== want.scheduleCron)
+      failures.push(`schedule was ${draft.schedule?.cron ?? null}, expected ${want.scheduleCron}`);
+    const goalCount = db.select().from(goals).all().length;
+    const scheduleCount = db.select().from(schedules).all().length;
+    if (goalCount !== want.goals) failures.push(`${goalCount} goal(s) exist, expected ${want.goals}`);
+    if (scheduleCount !== want.schedules)
+      failures.push(`${scheduleCount} schedule(s) exist, expected ${want.schedules}`);
+    return { name: scenario.name, failures };
+  }
 
   if (scenario.messages.length !== scenario.expect.length) {
     return { name: scenario.name, failures: ["messages and expect must have the same length"] };
@@ -173,6 +240,7 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     const run = engine.start(channel.id, text);
     // Answer approval cards as they appear; the run is parked in "waiting" until each one is answered.
     const answers = [...(want.approvals ?? [])];
+    const edits = [...(want.edits ?? [])];
     let settled = false;
     void engine.whenSettled(run.id).then(() => {
       settled = true;
@@ -193,13 +261,14 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       const answer = answers[0];
       if (next && answer) {
         answers.shift();
-        engine.decide(run.id, next, answer);
+        engine.decide(run.id, next, answer, edits.shift() ?? undefined);
       } else if (next && engine.get(run.id).status === "waiting") {
         failures.push(`${label}: waited on approval ${next} and no answer was scripted`);
         engine.cancel(run.id);
       }
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
+    await engine.whenCompacted(channel.id);
     const done = engine.get(run.id);
     const stored = db.select().from(events).where(eq(events.runId, run.id)).orderBy(events.seq).all();
 
@@ -229,6 +298,27 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
         `${label}: first tool result truncated was ${results[0]?.truncated}, expected ${want.toolResultTruncated}`,
       );
     }
+    const summaryRows = db.select().from(summaries).orderBy(summaries.version).all();
+    if (!live && want.summaryVersions !== undefined && summaryRows.length !== want.summaryVersions) {
+      failures.push(`${label}: ${summaryRows.length} summary version(s) exist, expected ${want.summaryVersions}`);
+    }
+    for (const needle of want.summaryIncludes ?? []) {
+      if (!summaryRows.at(-1)?.text.includes(needle)) failures.push(`${label}: latest summary lacks "${needle}"`);
+    }
+    if (want.contextIncludes) {
+      const sent = runContext(db, run.id)
+        .filter((c) => c.messages)
+        .at(-1)
+        ?.messages?.map((m) => m.content)
+        .join("\n");
+      for (const needle of want.contextIncludes) {
+        if (!sent?.includes(needle)) failures.push(`${label}: the request lacks "${needle}"`);
+      }
+    }
+    if (want.goals !== undefined) {
+      const count = db.select().from(goals).all().length;
+      if (count !== want.goals) failures.push(`${label}: ${count} goal(s) exist, expected ${want.goals}`);
+    }
     const made = db.select().from(schedules).orderBy(schedules.createdAt).all();
     if (want.schedules !== undefined && made.length !== want.schedules) {
       failures.push(`${label}: ${made.length} schedule(s) exist, expected ${want.schedules}`);
@@ -243,6 +333,30 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       if (types.join() !== want.eventTypes.join()) {
         failures.push(`${label}: events were [${types.join(", ")}], expected [${want.eventTypes.join(", ")}]`);
       }
+    }
+  }
+  if (scenario.branch) {
+    const b = scenario.branch;
+    const runsBefore = db.select().from(runs).where(eq(runs.channelId, channel.id)).all();
+    const from = runsBefore.sort((x, y) => x.startedAt.localeCompare(y.startedAt))[b.fromRun - 1];
+    if (!from) failures.push(`branch: run ${b.fromRun} does not exist`);
+    else {
+      const branched = await branchChannel(db, channel.id, from.id, {
+        summarize: modelSummarizer(live ?? new ScriptedModel(b.script)),
+      });
+      const next = engine.start(branched.id, b.followUp);
+      await engine.whenSettled(next.id);
+      const sent = runContext(db, next.id)
+        .filter((c) => c.messages)
+        .at(-1)
+        ?.messages?.map((m) => m.content)
+        .join("\n");
+      for (const needle of b.contextIncludes) {
+        if (!sent?.includes(needle)) failures.push(`branch: the new channel's request lacks "${needle}"`);
+      }
+      const after = db.select().from(runs).where(eq(runs.channelId, channel.id)).all().length;
+      if (after !== runsBefore.length)
+        failures.push(`branch: the source has ${after} run(s), expected ${runsBefore.length}`);
     }
   }
   return { name: scenario.name, failures };
