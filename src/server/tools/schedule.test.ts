@@ -1,10 +1,14 @@
+import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createChannel } from "../channels.js";
 import { openDatabase } from "../db/index.js";
-import { schedules } from "../db/schema.js";
+import { events, schedules } from "../db/schema.js";
 import { archiveGoal, createGoal } from "../goals.js";
+import { ScriptedModel } from "../model/scripted.js";
+import { defaultLimits, RunEngine } from "../runs.js";
 import { Scheduler } from "../scheduler.js";
-import { proposeScheduleTool } from "./schedule.js";
+import { ToolRegistry } from "./registry.js";
+import { maxPerGoal, proposeScheduleTool } from "./schedule.js";
 
 function setup() {
   const db = openDatabase(":memory:");
@@ -52,14 +56,50 @@ describe("propose_schedule", () => {
     );
   });
 
-  it("refuses an archived goal and a goal that already has 10 schedules", async () => {
+  it("refuses an archived goal and a goal that already has 5 schedules", async () => {
     const { db, goal, scheduler, tool, ctx } = setup();
-    for (let i = 0; i < 10; i++) scheduler.createSchedule({ goalId: goal.id, cron: `0 ${i} * * *`, prompt: "p" });
-    expect(tool.precheck?.({ cron: "0 20 * * *", prompt: "x" }, ctx)).toMatch(/already has 10/);
+    for (let i = 0; i < 4; i++) scheduler.createSchedule({ goalId: goal.id, cron: `0 ${i} * * *`, prompt: "p" });
+    // The fifth is still allowed.
+    expect(tool.precheck?.({ cron: "0 20 * * *", prompt: "x" }, ctx)).toBeNull();
+    scheduler.createSchedule({ goalId: goal.id, cron: "0 4 * * *", prompt: "p" });
+    expect(tool.precheck?.({ cron: "0 20 * * *", prompt: "x" }, ctx)).toMatch(/already has 5 schedules/);
     expect(await tool.execute({ cron: "0 20 * * *", prompt: "x" }, ctx)).toMatch(/^Error/);
-    expect(db.select().from(schedules).all()).toHaveLength(10);
+    expect(db.select().from(schedules).all()).toHaveLength(5);
     db.delete(schedules).run();
     archiveGoal(db, goal.id);
     expect(tool.precheck?.({ cron: "0 20 * * *", prompt: "x" }, ctx)).toMatch(/archived/);
+  });
+});
+
+describe("a sixth proposed schedule in a run", () => {
+  it("is refused before any card is shown, and nothing is created", async () => {
+    const { db, goal, scheduler } = setup();
+    for (let i = 0; i < maxPerGoal; i++)
+      scheduler.createSchedule({ goalId: goal.id, cron: `0 ${i} * * *`, prompt: "p" });
+    const model = new ScriptedModel({
+      turns: [
+        {
+          toolCalls: [
+            { id: "c1", name: "propose_schedule", arguments: { cron: "0 20 * * *", prompt: "Evening check-in." } },
+          ],
+        },
+        { text: ["This goal has as many schedules as it can have."] },
+      ],
+    });
+    const engine = new RunEngine(
+      db,
+      model,
+      defaultLimits,
+      new ToolRegistry().register(proposeScheduleTool(db, scheduler)),
+    );
+    const run = engine.start(goal.channelId, "Also check in every evening.");
+    await engine.whenSettled(run.id);
+    const stored = db.select().from(events).where(eq(events.runId, run.id)).all();
+    expect(stored.map((e) => e.type)).not.toContain("approval_request");
+    expect(JSON.parse(stored.find((e) => e.type === "tool_result")?.data ?? "{}").result).toMatch(
+      /already has 5 schedules/,
+    );
+    expect(engine.get(run.id).status).toBe("done");
+    expect(db.select().from(schedules).all()).toHaveLength(maxPerGoal);
   });
 });
