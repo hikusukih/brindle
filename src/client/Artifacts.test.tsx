@@ -45,6 +45,28 @@ describe("ArtifactsScreen", () => {
     expect(screen.getByText(/from deleted channel Lost/)).toBeTruthy();
   });
 
+  it("opens a goal's state document on its own page instead of fetching a file", async () => {
+    const fetchMock = vi.fn(async () =>
+      Response.json([
+        art({
+          id: "goal-state:g1",
+          title: "Learn Rust: state",
+          scope: "goal",
+          scopeId: "g1",
+          scopeName: "Learn Rust",
+          stateOfGoal: "g1",
+          version: 3,
+        }),
+      ]),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<ArtifactsScreen empty={empty} />);
+    expect(await screen.findByRole("link", { name: "Open" })).toHaveProperty("hash", "#/goals/g1/state");
+    expect(screen.getByText(/working memory of goal Learn Rust, version 3/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Open" })).toBeNull();
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
   it("links the run an artifact came from to that run in its channel", async () => {
     vi.stubGlobal(
       "fetch",

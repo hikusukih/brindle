@@ -23,6 +23,52 @@ export function stateVersions(db: Db, goalId: string): GoalState[] {
   return db.select().from(goalStates).where(eq(goalStates.goalId, goalId)).orderBy(asc(goalStates.version)).all();
 }
 
+/**
+ * The state documents as the Artifacts gallery lists them: one entry per goal that has written a state, pointing
+ * at the goal and carrying its latest version. There is no artifact row and no second copy of the text
+ * (docs/design/goals.md), so the entry can never fall behind the document.
+ */
+export type StateListing = {
+  id: string;
+  title: string;
+  kind: "document";
+  scope: "goal";
+  scopeId: string;
+  scopeName: string;
+  runId: string | null;
+  mime: string;
+  size: number;
+  createdAt: string;
+  scopeLive: boolean;
+  /** Set only on these entries: the goal whose state page the gallery links to. */
+  stateOfGoal: string;
+  version: number;
+};
+
+export function stateListings(db: Db): StateListing[] {
+  const listings: StateListing[] = [];
+  for (const goal of db.select().from(goals).all()) {
+    const state = currentState(db, goal.id);
+    if (!state) continue;
+    listings.push({
+      id: `goal-state:${goal.id}`,
+      title: `${goal.title}: state`,
+      kind: "document",
+      scope: "goal",
+      scopeId: goal.id,
+      scopeName: goal.title,
+      runId: state.runId,
+      mime: "text/markdown",
+      size: Buffer.byteLength(state.text),
+      createdAt: state.createdAt,
+      scopeLive: true,
+      stateOfGoal: goal.id,
+      version: state.version,
+    });
+  }
+  return listings;
+}
+
 /** Undefined until the first write. */
 export function currentState(db: Db, goalId: string): GoalState | undefined {
   return db

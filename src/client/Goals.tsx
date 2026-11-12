@@ -235,6 +235,14 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
                   {g.nextRunAt ? `Next: ${format(g.nextRunAt)}` : "Not scheduled"}
                 </span>
               </a>
+              {/* Beside the tile, not in it: the tile is one link to the channel, and a link cannot hold another. */}
+              <a
+                href={`#/goals/${encodeURIComponent(g.id)}/state`}
+                aria-label={`State document of ${g.title}`}
+                className="inline-flex min-h-11 items-center text-sm font-medium text-slate-700 underline"
+              >
+                State document
+              </a>
             </li>
           ))}
         </ul>

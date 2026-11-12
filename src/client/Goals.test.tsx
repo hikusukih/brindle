@@ -54,11 +54,15 @@ describe("Goals screen", () => {
         ]),
     });
     render(<GoalsScreen empty={empty} />);
-    const rust = await screen.findByRole("link", { name: /Learn Rust/ });
+    const rust = await screen.findByRole("link", { name: /^Learn Rust/ });
+    expect(screen.getByRole("link", { name: "State document of Learn Rust" })).toHaveProperty(
+      "hash",
+      "#/goals/g1/state",
+    );
     expect(rust.getAttribute("href")).toBe("#/channels/c1");
     expect(rust.textContent).toContain("A chapter a week.");
     expect(rust.textContent).toContain("Next:");
-    expect(screen.getByRole("link", { name: /Garden/ }).textContent).toContain("Not scheduled");
+    expect(screen.getByRole("link", { name: /^Garden/ }).textContent).toContain("Not scheduled");
   });
 
   it("drafts into an editable form and creates nothing until Create goal is pressed", async () => {
@@ -93,7 +97,7 @@ describe("Goals screen", () => {
     expect(calls).not.toContain("POST /api/goals");
     fireEvent.change(screen.getByLabelText("Brief"), { target: { value: "Weekly, with exercises." } });
     fireEvent.click(screen.getByRole("button", { name: "Create goal" }));
-    expect(await screen.findByRole("link", { name: /Learn Rust/ })).toBeTruthy();
+    expect(await screen.findByRole("link", { name: /^Learn Rust/ })).toBeTruthy();
     expect(calls).toContain("POST /api/goals");
     expect(screen.queryByLabelText("Title")).toBeNull();
   });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { openDatabase } from "./db/index.js";
-import { goalStates } from "./db/schema.js";
+import { artifacts, goalStates } from "./db/schema.js";
 import {
   applyAgentUpdate,
   currentState,
@@ -214,5 +214,29 @@ describe("the state API", () => {
     expect(versions).toHaveLength(1);
     expect((await send(`/api/goals/${goal.id}/state/versions/1/restore`, "POST")).status).toBe(200);
     expect((await send(`/api/goals/${goal.id}/state/versions/7/restore`, "POST")).status).toBe(404);
+  });
+});
+
+describe("the state document in the gallery", () => {
+  it("is one listing per goal with a state, always the latest version, and no second copy", async () => {
+    const { db, goal } = setup();
+    const app = createApp({ db });
+    const list = async (query = "") => (await app.request(`/api/artifacts${query}`)).json();
+    // A goal that has never written its state has nothing to show.
+    expect(await list()).toEqual([]);
+
+    saveUserState(db, goal.id, { text: "week 1" });
+    saveUserState(db, goal.id, { text: "week 1 and 2", baseVersion: 1 });
+    expect(await list()).toMatchObject([
+      { id: `goal-state:${goal.id}`, stateOfGoal: goal.id, version: 2, kind: "document", scope: "goal" },
+    ]);
+    expect(db.select().from(artifacts).all()).toHaveLength(0);
+
+    expect(await list("?kind=document&scope=goal")).toHaveLength(1);
+    expect(await list("?kind=code")).toEqual([]);
+    expect(await list("?scope=channel")).toEqual([]);
+
+    deleteGoal(db, goal.id);
+    expect(await list()).toEqual([]);
   });
 });

@@ -22,7 +22,14 @@ import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
 import type { GoalDrafter } from "./goal-draft.js";
-import { currentState, GoalStateError, restoreState, saveUserState, stateVersions } from "./goal-state.js";
+import {
+  currentState,
+  GoalStateError,
+  restoreState,
+  saveUserState,
+  stateListings,
+  stateVersions,
+} from "./goal-state.js";
 import {
   archiveGoal,
   briefHistory,
@@ -373,7 +380,10 @@ export function createApp({
     if (kind && !artifactKinds.includes(kind as ArtifactKind))
       throw new HTTPException(400, { message: "Unknown kind." });
     if (scope && scope !== "channel" && scope !== "goal") throw new HTTPException(400, { message: "Unknown scope." });
-    return c.json(artifacts?.list({ kind, scope }) ?? []);
+    const made = artifacts?.list({ kind, scope }) ?? [];
+    // Goals' state documents are listed beside what runs made; they are documents in a goal's scope.
+    const states = (!kind || kind === "document") && (!scope || scope === "goal") ? stateListings(db) : [];
+    return c.json([...made, ...states].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
   });
   // A model wrote this file, perhaps from fetched web text, so it is never served in a way that can run script on
   // this origin: sandboxed, not sniffed, and downloaded rather than shown unless it is plain text or Markdown.
