@@ -12,7 +12,7 @@ export function getGoalStateTool(access: GoalStateAccess): Tool {
     effect: "read",
     parameters: { type: "object", properties: {} },
     async execute(_args, ctx) {
-      const goal = access.forChannel(ctx.scope.id);
+      const goal = access.forScope(ctx.scope);
       if (!goal) return noGoal;
       const s = access.read(goal.id);
       return s.version === 0 ? "The state document is empty (version 0)." : `Version ${s.version}\n\n${s.text}`;
@@ -49,7 +49,7 @@ export function updateGoalStateTool(access: GoalStateAccess): Tool {
     },
     describeCall: (args) => `Update the goal's state: ${String(args.note)}`,
     async execute(args, ctx) {
-      const goal = access.forChannel(ctx.scope.id);
+      const goal = access.forScope(ctx.scope);
       if (!goal) return noGoal;
       const result = access.update(goal.id, {
         version: args.version as number,

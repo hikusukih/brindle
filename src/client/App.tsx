@@ -4,6 +4,7 @@ import { ArtifactsScreen } from "./Artifacts";
 import { api, type Channel, channelsChanged } from "./api";
 import { ChannelsScreen } from "./Channels";
 import { GoalStateView, goalStateIdFromHash } from "./GoalState";
+import { GoalsScreen } from "./Goals";
 import { LoginGate } from "./Login";
 import { SettingsScreen } from "./Settings";
 import { channelIdFromHash, type ScreenId, screenFromHash, screens } from "./screens";
@@ -130,7 +131,7 @@ function Shell() {
         </div>
       </nav>
       <main
-        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" || screen === "settings" || stateGoal ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
+        className={`mx-auto flex min-h-dvh max-w-md flex-1 flex-col ${screen === "channels" || screen === "artifacts" || screen === "settings" || screen === "goals" || stateGoal ? "" : "justify-center"} gap-2 p-6 pb-24 md:pb-6`}
       >
         {screen === "channels" ? (
           <ChannelsScreen />
@@ -138,6 +139,8 @@ function Shell() {
           <GoalStateView goalId={stateGoal} />
         ) : screen === "settings" ? (
           <SettingsScreen />
+        ) : screen === "goals" ? (
+          <GoalsScreen empty={active.empty} />
         ) : screen === "artifacts" ? (
           <ArtifactsScreen empty={active.empty} />
         ) : (

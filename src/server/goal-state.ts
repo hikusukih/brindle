@@ -166,15 +166,20 @@ export function applyAgentUpdate(db: Db, goalId: string, update: AgentUpdate, no
 
 /** What a tool may do with state, so it never holds the database. */
 export type GoalStateAccess = {
-  forChannel(channelId: string): { id: string; title: string } | undefined;
+  /** The goal a run's tools act on: the scope's own goal for a scheduled run, else the goal whose channel it is. */
+  forScope(scope: { kind: string; id: string }): { id: string; title: string } | undefined;
   read(goalId: string): { version: number; text: string };
   update(goalId: string, update: AgentUpdate): AgentResult;
 };
 
 export function goalStateAccess(db: Db): GoalStateAccess {
   return {
-    forChannel: (channelId) => {
-      const g = db.select().from(goals).where(eq(goals.channelId, channelId)).get();
+    forScope: (scope) => {
+      const g = db
+        .select()
+        .from(goals)
+        .where(scope.kind === "goal" ? eq(goals.id, scope.id) : eq(goals.channelId, scope.id))
+        .get();
       return g && g.status === "active" ? { id: g.id, title: g.title } : undefined;
     },
     read: (goalId) => {

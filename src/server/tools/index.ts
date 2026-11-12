@@ -1,7 +1,9 @@
 import type { ArtifactStore } from "../artifacts.js";
+import type { Db } from "../db/index.js";
 import type { GoalStateAccess } from "../goal-state.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "./artifacts.js";
 import { getGoalStateTool, updateGoalStateTool } from "./goal-state.js";
+import { searchHistoryTool } from "./history.js";
 import { ToolRegistry } from "./registry.js";
 import { speakTool } from "./speak.js";
 import { webFetchTool, webSearchTool } from "./web.js";
@@ -14,11 +16,13 @@ import { webFetchTool, webSearchTool } from "./web.js";
 export function builtInTools(
   env: Record<string, string | undefined>,
   artifacts?: ArtifactStore,
+  db?: Db,
   goalState?: GoalStateAccess,
 ): ToolRegistry {
   const registry = new ToolRegistry().register(
     webFetchTool({ allowPrivate: env.BRINDLE_WEB_FETCH_ALLOW_PRIVATE === "1" }),
   );
+  if (db) registry.register(searchHistoryTool(db));
   const search = env.BRINDLE_SEARCH_URL?.trim();
   if (artifacts) {
     registry.register(createArtifactTool(artifacts));

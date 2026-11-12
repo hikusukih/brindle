@@ -1,0 +1,38 @@
+{
+  "name": "declined-goal-draft-creates-nothing",
+  "description": "The user declines the drafted goal, so no goal and no schedule exist.",
+  "proposeGoal": true,
+  "messages": ["Maybe track my reading as a goal."],
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_goal",
+            "arguments": {
+              "title": "Reading",
+              "brief": "Read a book a month.",
+              "schedule": {
+                "cron": "0 20 * * *",
+                "prompt": "Ask how reading went."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "text": ["Okay, I have not created anything."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["decline"],
+      "goals": 0,
+      "schedules": 0,
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}

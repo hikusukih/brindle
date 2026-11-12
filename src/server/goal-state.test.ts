@@ -173,6 +173,18 @@ describe("the state tools", () => {
     expect(await get.execute({}, ctx("some-other-channel"))).toMatch(/not a goal's channel/);
   });
 
+  // A scheduled run's scope is the goal itself, not its channel (P4.12); it must reach the same document.
+  it("reach the goal's document from a scheduled run's goal scope", async () => {
+    const { db, goal } = setup();
+    const access = goalStateAccess(db);
+    const goalScope = { ...ctx(goal.channelId), scope: { kind: "goal" as const, id: goal.id } };
+    expect(
+      await updateGoalStateTool(access).execute({ version: 0, replace: "plan", note: "start" }, goalScope),
+    ).toMatch(/version 1/);
+    expect(await getGoalStateTool(access).execute({}, goalScope)).toBe("Version 1\n\nplan");
+    expect(await getGoalStateTool(access).execute({}, ctx(goal.channelId))).toBe("Version 1\n\nplan");
+  });
+
   it("validates arguments before executing", () => {
     const update = updateGoalStateTool(goalStateAccess(openDatabase(":memory:")));
     expect(validateArguments(update, { version: 1, note: "n", edits: [{ old: "a" }] })).toMatch(/new is required/);

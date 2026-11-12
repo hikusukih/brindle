@@ -16,6 +16,8 @@ export const channels = sqliteTable("channels", {
   archivedAt: text("archived_at"),
   // A model spec such as "openai:gpt-4o"; null means the server's default model.
   model: text("model"),
+  // JSON for a channel made by "New channel from here": where it came from and whether the history was carried over (see branch.ts).
+  branch: text("branch"),
 });
 
 export const runs = sqliteTable(
@@ -31,6 +33,13 @@ export const runs = sqliteTable(
     stopReason: text("stop_reason"),
     startedAt: text("started_at").notNull(),
     endedAt: text("ended_at"),
+    // Set when the run's scope is a goal rather than its channel (docs/design/goals.md). No foreign key: deleting a
+    // goal deletes its channel, whose cascade already removes these runs.
+    goalId: text("goal_id"),
+    // user | schedule: who started it. A scheduled run has nobody watching, so it gets the shorter approval timeout.
+    trigger: text("trigger").notNull().default("user"),
+    // Tokens counted toward the run's token limit so far: uncached input plus output (see countedTokens in runs.ts).
+    tokens: integer("tokens").notNull().default(0),
   },
   (t) => [index("runs_channel_idx").on(t.channelId, t.startedAt)],
 );
@@ -188,5 +197,58 @@ export const contextReports = sqliteTable(
   (t) => [
     index("context_reports_channel_idx").on(t.channelId, t.createdAt),
     index("context_reports_run_idx").on(t.runId, t.step),
+  ],
+);
+
+// Compaction output (docs/design/context.md): append-only versions per channel, the highest is current. The runs and
+// events a summary covers are never touched.
+export const summaries = sqliteTable(
+  "summaries",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    // The last run folded into this summary; null for a summary that covers no runs of this channel.
+    throughRunId: text("through_run_id"),
+    text: text("text").notNull(),
+    // JSON string[] of artifact ids the text refers to.
+    artifacts: text("artifacts").notNull(),
+    tokensUsed: integer("tokens_used").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("summaries_version_idx").on(t.channelId, t.version)],
+);
+
+// One store for everything that is not conversation: found items for the feed, accounts of scheduled runs, and the harness's own notices (docs/design/reports.md).
+export const reports = sqliteTable(
+  "reports",
+  {
+    id: text("id").primaryKey(),
+    // found | run | system
+    kind: text("kind").notNull(),
+    // goal | channel; both null for an instance-wide notice.
+    scopeKind: text("scope_kind"),
+    scopeId: text("scope_id"),
+    // The run that produced it, when there is one. Plain text: a report outlives a deleted run.
+    runId: text("run_id"),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    link: text("link"),
+    occurredAt: text("occurred_at").notNull(),
+    // Null until read.
+    readAt: text("read_at"),
+    // found only: the normalized link, or a hash of the normalized title and date.
+    dedupeKey: text("dedupe_key"),
+    // system only: the template name and what it is about, so an identical notice within the hour becomes a count.
+    template: text("template"),
+    subject: text("subject"),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex("reports_dedupe_idx").on(t.scopeKind, t.scopeId, t.dedupeKey),
+    index("reports_scope_idx").on(t.scopeKind, t.scopeId, t.occurredAt),
+    index("reports_kind_idx").on(t.kind, t.occurredAt),
   ],
 );

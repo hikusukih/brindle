@@ -8,6 +8,10 @@ export type Channel = {
   archivedAt: string | null;
   /** A spec such as "openai:gpt-4o"; null follows the server default. */
   model: string | null;
+  /** The goal that owns this channel, or null for an ordinary one. Its rename, archive and delete go through the goal. */
+  goalId: string | null;
+  /** JSON about a channel made by "New channel from here"; null otherwise. */
+  branch?: string | null;
 };
 
 export type RunEvent = { id: string; runId: string; seq: number; type: string; data: string; createdAt: string };
@@ -84,4 +88,19 @@ export type Artifact = {
 };
 
 export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+export type ModelSettingValues = {
+  contextWindow?: number;
+  maxSteps?: number;
+  maxTokens?: number;
+  maxMillis?: number;
+  housekeepingMillis?: number;
+  warmCache?: boolean;
+};
+export type ModelSettingsView = {
+  spec: string;
+  configured: ModelSettingValues;
+  effective: Required<ModelSettingValues>;
+  serverWindow: number | null;
+  problem: string | null;
+};
 export type ModelList = { default: string | null; models: ModelInfo[] };
