@@ -9,6 +9,7 @@ import { getChannel } from "./channels.js";
 import { modelSummarizer } from "./compaction.js";
 import { openDatabase } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
+import { openVault, VaultError } from "./keys/index.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
 import { modelRegistry, supported } from "./model/config.js";
@@ -36,6 +37,19 @@ mkdirSync(dataDir, { recursive: true });
 migrateLegacyDatabase(dataDir);
 const db = openDatabase(join(dataDir, "brindle.sqlite"));
 recordFirstStart(db);
+// The vault (docs/design/key-manager.md) starts only when BRINDLE_MASTER_KEY_FILE names a key file; it never makes one
+// beside the data. A bad key file stops the server rather than leaving credentials quietly unusable.
+const masterKeyFile = process.env.BRINDLE_MASTER_KEY_FILE?.trim();
+if (masterKeyFile) {
+  try {
+    openVault(db, { keyFile: masterKeyFile, dataDir });
+    console.log("The vault is open.");
+  } catch (error) {
+    if (!(error instanceof VaultError)) throw error;
+    console.error(`The vault cannot start: ${error.message}`);
+    process.exit(1);
+  }
+}
 const token = resolveToken(db, process.env);
 if (token.generated) {
   console.log(`Login token (shown once; set BRINDLE_TOKEN to choose your own): ${token.generated}`);

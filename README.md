@@ -66,6 +66,10 @@ Put a `model-settings.json` in the data directory to set numbers per model, keye
 
 After a channel's third finished run, one housekeeping call drafts a sentence or two on what the channel is for. It is shown under the channel name as a draft, and the user can edit it in place or ask for a new draft; text the user wrote is never replaced by a draft. It is sent with every run in that channel. Housekeeping calls use the channel's own model unless `BRINDLE_UTILITY_MODEL` names another (same `provider:name` spelling), such as a cheaper one.
 
+### The vault
+
+Credentials for goals will live in a vault, encrypted with a master key that is kept outside the data directory so a backup of the data alone is useless. Set `BRINDLE_MASTER_KEY_FILE` to the path of a file (for example on a separate Docker volume). If the file does not exist and the vault is empty, the server creates it with owner-only permissions; if the vault holds secrets and the file is missing, readable by others, or the wrong key, the server refuses to start and says why. Nothing uses the vault yet. Keep a copy of the key file somewhere safe: without it the secrets cannot be recovered.
+
 ### Trying runs with the scripted model
 
 Long channels are compacted after a run ends: older runs are folded into a running summary (the transcript you read is never changed). The summary is written by the same model as the channel by default; set `BRINDLE_UTILITY_MODEL` (written `provider:name`) to use another, such as a cheaper one.

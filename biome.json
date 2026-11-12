@@ -27,5 +27,27 @@
         "organizeImports": "on"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**", "!src/server/keys/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noRestrictedImports": {
+              "level": "error",
+              "options": {
+                "patterns": [
+                  {
+                    "group": ["**/keys/*.js", "**/keys/*.ts", "!**/keys/index.js"],
+                    "message": "Import the key manager only through its index; nothing outside it may reach the vault's internals."
+                  }
+                ]
+              }
+            }
+          }
+        }
+      }
+    }
+  ]
 }
