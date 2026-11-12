@@ -6,7 +6,9 @@ import {
   loadModelSettings,
   ModelSettingsError,
   ModelSettingsStore,
+  makePrepareModel,
   serverContextWindow,
+  startupSpecs,
   updateModelSettings,
 } from "./settings.js";
 
@@ -86,6 +88,33 @@ describe("the server's own window", () => {
     await applyServerWindows(store, ["anthropic:x"], "http://127.0.0.1:8080/v1", never);
     await applyServerWindows(store, ["openai:local"], undefined, never);
     expect(store.forSpec(null).contextWindow).toBe(32_000);
+  });
+});
+
+describe("makePrepareModel", () => {
+  it("asks the server for a spec's window once, then not again", async () => {
+    const store = new ModelSettingsStore({}, () => "openai:local");
+    let asked = 0;
+    const counting = (async (...args: Parameters<typeof fetch>) => {
+      asked++;
+      return server(8192)(...args);
+    }) as unknown as typeof fetch;
+    const prepare = makePrepareModel(store, "http://127.0.0.1:8080/v1", counting);
+    await prepare("openai:local");
+    await prepare("openai:local");
+    expect(store.forSpec("openai:local").contextWindow).toBe(8192);
+    expect(asked).toBe(1);
+  });
+});
+
+describe("startupSpecs", () => {
+  it("includes a channel's stored model that is outside the settings file, once", () => {
+    const store = new ModelSettingsStore({ "openai:a": { contextWindow: 4096 } }, () => "openai:a");
+    expect(startupSpecs(store, "openai:default", ["openai:b", null, "openai:b", "openai:a"]).sort()).toEqual([
+      "openai:a",
+      "openai:b",
+      "openai:default",
+    ]);
   });
 });
 

@@ -5,7 +5,7 @@ import { serve } from "@hono/node-server";
 import { createApp, recordFirstStart } from "./app.js";
 import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
-import { getChannel } from "./channels.js";
+import { getChannel, listChannels } from "./channels.js";
 import { modelSummarizer } from "./compaction.js";
 import { openDatabaseSafely } from "./db/backup.js";
 import type { Db } from "./db/index.js";
@@ -18,6 +18,8 @@ import {
   describeModelSettings,
   loadModelSettings,
   ModelSettingsStore,
+  makePrepareModel,
+  startupSpecs,
   updateModelSettings,
 } from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
@@ -78,13 +80,19 @@ const settings = new ModelSettingsStore(
   () => models.defaultSpec,
   (spec) => models.list().some((m) => m.spec === spec),
 );
+const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 await applyServerWindows(
   settings,
-  [...settings.specs(), ...(models.defaultSpec ? [models.defaultSpec] : [])],
-  process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined,
+  startupSpecs(
+    settings,
+    models.defaultSpec ?? null,
+    [...listChannels(db), ...listChannels(db, { archived: true })].map((c) => c.model),
+  ),
+  localServer,
 );
+// A model chosen later, for one channel or as the default, gets its server's window asked for the first time it is used.
+const prepareModel = makePrepareModel(settings, localServer);
 const modelSettingsPath = join(dataDir, "model-settings.json");
-const localServer = process.env.BRINDLE_OPENAI_BASE_URL?.trim() || undefined;
 const limitsFor = (spec: string | null): RunLimits => {
   const s = settings.forSpec(spec);
   return { ...defaultLimits, ...s };
@@ -132,7 +140,7 @@ const app = createApp({
   db,
   engine,
   // Object.assign, not a spread: a spread would copy defaultSpec's getter value once and freeze the default the API reports.
-  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec) }),
+  models: Object.assign(models, { settings: (spec: string | null) => settings.forSpec(spec), prepare: prepareModel }),
   modelSettings: {
     list: () =>
       describeModelSettings(

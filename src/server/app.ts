@@ -69,6 +69,8 @@ type AppOptions = {
   // What channels may be set to use; absent, setting a channel's model is refused.
   models?: Pick<ModelRegistry, "validate" | "list" | "setDefault"> & {
     defaultSpec?: string;
+    // Run before a model is first chosen, such as asking a local server for its window; may throw a message for the user.
+    prepare?: (spec: string) => Promise<void>;
     // The numbers a channel's model runs under, for the channel view; absent, the view shows none.
     settings?: (spec: string | null) => {
       model: string;
@@ -267,6 +269,7 @@ export function createApp({
     if (!models) throw new HTTPException(400, { message: "No models can be chosen on this server." });
     if (typeof model !== "string") throw new HTTPException(400, { message: "model must be a string." });
     try {
+      if (models.prepare && models.list().some((m) => m.spec === model)) await models.prepare(model);
       models.setDefault(model);
     } catch (error) {
       throw new HTTPException(400, { message: (error as Error).message });
@@ -293,6 +296,13 @@ export function createApp({
       (() => {
         throw new Error("No models can be chosen on this server.");
       });
+    if (typeof body.model === "string" && models?.prepare && models.list().some((m) => m.spec === body.model)) {
+      try {
+        await models.prepare(body.model);
+      } catch (error) {
+        throw new HTTPException(400, { message: (error as Error).message });
+      }
+    }
     return c.json(setChannelModel(db, c.req.param("id"), body.model, validate));
   });
   app.post("/api/channels/:id/archive", (c) => {

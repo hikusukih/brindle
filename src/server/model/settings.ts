@@ -185,6 +185,36 @@ export async function applyServerWindows(
   }
 }
 
+/**
+ * Asks for a model's window the first time it is used, then remembers it. Returned as a function so the wiring
+ * (skip what is known, ask for the rest) can be tested apart from main.ts.
+ */
+export function makePrepareModel(
+  store: ModelSettingsStore,
+  baseUrl: string | undefined,
+  fetchFn: typeof fetch = fetch,
+) {
+  return async (spec: string) => {
+    if (store.serverWindow(spec) !== undefined) return;
+    await applyServerWindows(store, [spec], baseUrl, fetchFn);
+  };
+}
+
+/**
+ * Every spec whose window should be asked for at startup: the settings file's models, the default, and each
+ * channel's stored model (archived ones too). Without the channels' models, a restart would leave a channel on the
+ * default numbers until someone re-picked its model.
+ */
+export function startupSpecs(
+  store: ModelSettingsStore,
+  defaultSpec: string | null,
+  channelModels: Array<string | null>,
+): string[] {
+  const specs = [...store.specs(), ...(defaultSpec ? [defaultSpec] : [])];
+  for (const m of channelModels) if (m) specs.push(m);
+  return [...new Set(specs)];
+}
+
 export const windowTooLarge = (spec: string, configured: number, server: number) =>
   `${spec}: the configured contextWindow (${configured}) is larger than the server's (${server}). Lower it, or start the server with a larger context size.`;
 

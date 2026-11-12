@@ -177,7 +177,12 @@ export function assembleContext(input: ContextInput): { messages: Message[]; rep
   const sizes = input.past.map((r) => tokensOf(r.messages));
   // Start where the previous request started, so a drop is not repeated on every message: without this, each
   // new run would push the 40% cut forward by one and the start of the prompt would change every time.
-  const anchor = prev?.firstRunId ? input.past.findIndex((r) => r.id === prev.firstRunId) : -1;
+  // After a change of model the old start no longer binds: the cache is cold anyway, and runs dropped under a smaller
+  // window should come back when the new one has room for them.
+  const anchor =
+    prev?.firstRunId && !report.breaks.includes("model_change")
+      ? input.past.findIndex((r) => r.id === prev.firstRunId)
+      : -1;
   let from = Math.max(0, anchor);
   let total = sizes.slice(from).reduce((a, b) => a + b, 0);
   if (total > share) {
