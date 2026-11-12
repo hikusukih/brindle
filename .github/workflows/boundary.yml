@@ -15,8 +15,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release list --repo ggml-org/llama.cpp --limit 5
-          gh release view --repo ggml-org/llama.cpp --json tagName,assets --jq '.tagName, (.assets[] | "\(.name) \(.size) \(.digest)")'
+          gh release view b12287 --repo ggml-org/llama.cpp --json tagName,assets --jq '.tagName, (.assets[] | "\(.name) \(.size) \(.digest)")'
       - name: The model file's checksum at the pinned revision
         run: |
           curl -sS "https://huggingface.co/api/models/bartowski/SmolLM2-135M-Instruct-GGUF/tree/09816acd5d99df7be770d85ea30822623dab342c" | jq -r '.[] | select(.path | test("Q8_0|Q4_K_M")) | "\(.path) \(.size) \(.lfs.oid)"'
