@@ -3,8 +3,9 @@ import { createChannel } from "../../channels.js";
 import { modelSummarizer } from "../../compaction.js";
 import { runContext } from "../../context.js";
 import { openDatabase } from "../../db/index.js";
+import { summaries as summariesTable } from "../../db/schema.js";
 import { defaultLimits, RunEngine } from "../../runs.js";
-import { ModelError, type ModelEvent } from "../adapter.js";
+import { type ModelAdapter, ModelError, type ModelEvent, type Usage } from "../adapter.js";
 import { OpenAiAdapter } from "../openai.js";
 import { applyServerWindows, ModelSettingsError, ModelSettingsStore, serverContextWindow } from "../settings.js";
 import { FakeLlamaServer } from "./fake-llama.js";
@@ -173,5 +174,79 @@ describe("model boundary", () => {
     await expect(result).rejects.toMatchObject({ kind: "aborted" });
     expect(Date.now() - started).toBeLessThan(3_000);
     stalled.stall = null;
+  });
+
+  // Context assembly against the server's own prompt cache: a long conversation that folds at least once. A turn whose
+  // context report records no planned break must be read from the cache; a turn the cache missed must have a break.
+  it("keeps a 30-turn conversation with a fold inside the window and on the cache, missing only at planned breaks", {
+    timeout: 300_000,
+  }, async () => {
+    const housekeepingMillis = 120_000;
+    const db = openDatabase(":memory:");
+    // The conversation's calls are recorded; the fold's go through a plain adapter and are not.
+    const seen: Usage[] = [];
+    const inner = adapter();
+    const recording: ModelAdapter = {
+      async *stream(request) {
+        for await (const e of inner.stream(request)) {
+          if (e.type === "done") seen.push(e.usage);
+          yield e;
+        }
+      },
+    };
+    const engine = new RunEngine(db, recording, { ...defaultLimits, contextWindow: nCtx }, undefined, {
+      utilityModel: adapter(),
+      housekeepingMillis,
+    });
+    const channel = createChannel(db, "Long");
+    // About 120 words a message, so thirty turns outgrow the history share and fold.
+    const filler = Array.from({ length: 110 }, (_, i) => `word${i % 37}`).join(" ");
+    const turns: {
+      breaks: string[];
+      input: number;
+      cached: number | undefined;
+      reused: boolean;
+      foldMillis?: number;
+    }[] = [];
+    let previousInput = 0;
+    for (let turn = 1; turn <= 30; turn++) {
+      const run = engine.start(channel.id, `Turn ${turn} about topic ${turn % 5}: ${filler}`);
+      await engine.whenSettled(run.id);
+      expect(engine.get(run.id).status, `turn ${turn}`).toBe("done");
+      const usage = seen.at(-1);
+      const breaks = runContext(db, run.id)[0]?.report.breaks ?? [];
+      // The server's own counts: the whole request fits its window, and how much of it the cache served.
+      const input = usage?.inputTokens ?? 0;
+      expect(input, `turn ${turn} fits the window`).toBeLessThanOrEqual(nCtx);
+      const cached = usage?.cachedInputTokens ?? (fake ? fake.seen.at(-1)?.cachedTokens : undefined);
+      // Reused: the cache covered the previous request, give or take a re-tokenized reply at its end.
+      const reused = cached !== undefined && turn > 1 && cached >= previousInput - 16;
+      const started = Date.now();
+      const before = db.select().from(summariesTable).all().length;
+      await engine.whenCompacted(channel.id);
+      const folded = db.select().from(summariesTable).all().length > before;
+      const foldMillis = folded ? Date.now() - started : undefined;
+      if (foldMillis !== undefined) expect(foldMillis).toBeLessThan(housekeepingMillis);
+      turns.push({ breaks, input, cached, reused, foldMillis });
+      previousInput = input;
+    }
+    report.push(
+      ...turns.map(
+        (t, i) =>
+          `context turn ${i + 1}: ${t.input} prompt tokens, ${t.cached ?? "no"} cached${t.breaks.length ? `, planned break: ${t.breaks.join(", ")}` : ""}${t.foldMillis !== undefined ? `, then a fold in ${t.foldMillis} ms` : ""}`,
+      ),
+    );
+    expect(
+      turns.some((t) => t.foldMillis !== undefined),
+      "at least one fold",
+    ).toBe(true);
+    // A server that reports no cached count can't be checked here; the fake and llama.cpp both report one.
+    if (fake) expect(turns.slice(1).filter((t) => t.cached !== undefined)).toHaveLength(29);
+    for (const [i, t] of turns.entries()) {
+      if (i === 0 || t.cached === undefined) continue;
+      if (!t.breaks.length) expect(t.reused, `turn ${i + 1} has no planned break, so it reuses the cache`).toBe(true);
+      if (!t.reused)
+        expect(t.breaks.length, `turn ${i + 1} missed the cache, so it records a break`).toBeGreaterThan(0);
+    }
   });
 });
