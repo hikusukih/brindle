@@ -105,13 +105,15 @@ export class PurposeDrafter {
   }
 
   /** A draft from a branch's seed summary, since the new channel has no exchanges of its own yet. Saved like any draft. */
-  async draftFromSeed(channelId: string, seed: string): Promise<ScopeStatement> {
+  async draftFromSeed(channelId: string, seed: string, focus?: string): Promise<ScopeStatement> {
     const { model, millis } = this.housekeeping(channelId);
+    // The drift nudge names the topic the new channel is for; the statement centers on it.
+    const about = focus ? `\n\nThe new channel is for this topic: ${focus}` : "";
     const text = (
       await housekeepingCall(
         model,
         instructions,
-        `Summary of the conversation this channel continues:\n\n${seed}`,
+        `Summary of the conversation this channel continues:\n\n${seed}${about}`,
         millis,
       )
     )

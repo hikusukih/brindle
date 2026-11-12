@@ -74,6 +74,8 @@ export async function branchChannel(
   runId: string,
   options: {
     name?: unknown;
+    /** What the seed centers on; the chosen run's topic unless the drift nudge names one. */
+    focus?: string;
     summarize?: Summarize;
     draftPurpose?: (channelId: string, seed: string) => Promise<unknown>;
     signal?: AbortSignal;
@@ -140,7 +142,7 @@ export async function branchChannel(
       seed = await summarizeWithinCap(options.summarize, {
         previous: used?.text ?? null,
         runs: material,
-        focus: `the topic of run ${run.id}`,
+        focus: options.focus ?? `the topic of run ${run.id}`,
         signal: options.signal,
       });
     } catch {

@@ -9,6 +9,7 @@ import { modelSummarizer } from "../src/server/compaction.js";
 import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
 import { artifacts, events, goals, runs, schedules, summaries } from "../src/server/db/schema.js";
+import { acceptNudge, DriftChecker, dismissNudge, openNudge } from "../src/server/drift.js";
 import { GoalDrafter } from "../src/server/goal-draft.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
@@ -17,6 +18,7 @@ import type { ModelAdapter } from "../src/server/model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "../src/server/model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "../src/server/runs.js";
 import { Scheduler } from "../src/server/scheduler.js";
+import { writeStatement } from "../src/server/scope-statements.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/server/tools/artifacts.js";
 import { proposeGoalTool } from "../src/server/tools/goal.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
@@ -54,6 +56,10 @@ export type RunExpectation = {
   goals?: number;
   /** The schedules' cron expressions after this run, in the order made. Scripted mode only: a real model may word them differently. */
   crons?: string[];
+  /** For a `drift` scenario: whether a nudge is waiting for an answer after this run's check. Holds for a real classifier too. */
+  nudgeOpen?: boolean;
+  /** For a `drift` scenario: answers the waiting nudge after this run. Accept must make a channel and move nothing. */
+  answerNudge?: "dismiss" | "accept";
 };
 
 /** A stand-in tool whose result is fixed, so scenarios can exercise effect levels and result sizing. */
@@ -115,6 +121,11 @@ export type Scenario = {
    * string, and the source must still hold every run it had.
    */
   branch?: { fromRun: number; script: ScriptedFixture; followUp: string; contextIncludes: string[] };
+  /**
+   * Turns on the drift check after every run, with the user-written `purpose` as the channel's statement and a
+   * classifier that follows `script` (the live model, in live mode). `nudges` is how many nudges appear in all.
+   */
+  drift?: { purpose: string; script: ScriptedFixture; nudges: number };
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
@@ -206,6 +217,18 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
   );
   const channel = goal ? { id: goal.channelId } : createChannel(db, scenario.name);
   const failures: string[] = [];
+  let drift: DriftChecker | undefined;
+  if (scenario.drift) {
+    writeStatement(db, {
+      scopeKind: "channel",
+      scopeId: channel.id,
+      text: scenario.drift.purpose,
+      author: "user",
+      confirmed: true,
+    });
+    const classifier = live ?? new ScriptedModel(scenario.drift.script);
+    drift = new DriftChecker(db, () => ({ model: classifier, millis: 10 * 60_000 }));
+  }
 
   if (scenario.goalDraft) {
     const want = scenario.goalDraft.expect;
@@ -269,6 +292,21 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       await new Promise((resolve) => setTimeout(resolve, 2));
     }
     await engine.whenCompacted(channel.id);
+    if (drift) {
+      await drift.afterRun(channel.id);
+      const open = openNudge(db, channel.id);
+      if (want.nudgeOpen !== undefined && (open !== null) !== want.nudgeOpen)
+        failures.push(`${label}: a nudge was ${open ? "" : "not "}waiting, expected the opposite`);
+      if (want.answerNudge && !open) failures.push(`${label}: no nudge to ${want.answerNudge}`);
+      else if (want.answerNudge === "dismiss" && open) dismissNudge(db, channel.id, open.checkId);
+      else if (want.answerNudge === "accept" && open) {
+        const before = db.select().from(runs).where(eq(runs.channelId, channel.id)).all().length;
+        const made = await acceptNudge(db, channel.id, open.checkId, {});
+        if (made.name !== open.topic) failures.push(`${label}: the new channel is "${made.name}", not "${open.topic}"`);
+        const after = db.select().from(runs).where(eq(runs.channelId, channel.id)).all().length;
+        if (after !== before) failures.push(`${label}: accepting changed the source's runs from ${before} to ${after}`);
+      }
+    }
     const done = engine.get(run.id);
     const stored = db.select().from(events).where(eq(events.runId, run.id)).orderBy(events.seq).all();
 
@@ -334,6 +372,15 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
         failures.push(`${label}: events were [${types.join(", ")}], expected [${want.eventTypes.join(", ")}]`);
       }
     }
+  }
+  if (scenario.drift && !live) {
+    const shown = db
+      .select()
+      .from(events)
+      .all()
+      .filter((e) => e.type === "nudge").length;
+    if (shown !== scenario.drift.nudges)
+      failures.push(`drift: ${shown} nudge(s) appeared, expected ${scenario.drift.nudges}`);
   }
   if (scenario.branch) {
     const b = scenario.branch;

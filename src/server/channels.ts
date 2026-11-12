@@ -43,6 +43,7 @@ export function createChannel(db: Db, name: unknown, now = new Date()): Channel 
     archivedAt: null,
     model: null,
     branch: null,
+    driftDismissedVersion: null,
   };
   db.insert(channels).values(row).run();
   return row;

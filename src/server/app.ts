@@ -21,6 +21,7 @@ import type { Summarize } from "./compaction.js";
 import { runContext } from "./context.js";
 import type { Db } from "./db/index.js";
 import { appMeta } from "./db/schema.js";
+import { acceptNudge, dismissNudge } from "./drift.js";
 import type { GoalDrafter } from "./goal-draft.js";
 import {
   archiveGoal,
@@ -285,6 +286,20 @@ export function createApp({
       }),
       201,
     );
+  });
+  // The drift nudge's two buttons. Accept is "New channel from here" on the latest run, named for the topic.
+  app.post("/api/channels/:id/nudges/:checkId/accept", async (c) =>
+    c.json(
+      await acceptNudge(db, c.req.param("id"), c.req.param("checkId"), {
+        summarize: branching,
+        draftPurpose: purpose ? (id, seed, focus) => purpose.draftFromSeed(id, seed, focus) : undefined,
+      }),
+      201,
+    ),
+  );
+  app.post("/api/channels/:id/nudges/:checkId/dismiss", (c) => {
+    dismissNudge(db, c.req.param("id"), c.req.param("checkId"));
+    return c.json({ dismissed: true });
   });
   app.post("/api/channels/:id/model", async (c) => {
     const body = (await c.req.json().catch(() => ({}))) as { model?: unknown };

@@ -1,0 +1,195 @@
+{
+  "name": "drift-on-topic-runs-produce-no-nudge",
+  "description": "Twenty runs that stay on the channel's gardening purpose: a check after every fourth run finds each on topic, and no nudge appears.",
+  "messages": [
+    "Should I plant tomatoes or peppers first?",
+    "How deep do bean seeds go?",
+    "When is the last frost here, roughly?",
+    "Do carrots need full sun?",
+    "How often should I water lettuce?",
+    "What goes well next to squash?",
+    "Is mulch worth it for a small bed?",
+    "How far apart should I space kale?",
+    "Can I grow potatoes in a bag?",
+    "What eats my basil leaves?",
+    "Should I prune tomato suckers?",
+    "When do I harvest garlic?",
+    "Are raised beds better than rows?",
+    "How do I make compost faster?",
+    "Can peas climb a fence?",
+    "What is a good cover crop for winter?",
+    "How do I keep slugs off seedlings?",
+    "Should I start onions from sets or seed?",
+    "How much sun do cucumbers need?",
+    "When should I plant fall greens?"
+  ],
+  "drift": {
+    "purpose": "Planning and tending the vegetable garden.",
+    "script": {
+      "turns": [
+        {
+          "text": ["{\"onTopic\": true}"]
+        },
+        {
+          "text": ["{\"onTopic\": true}"]
+        },
+        {
+          "text": ["{\"onTopic\": true}"]
+        },
+        {
+          "text": ["{\"onTopic\": true}"]
+        },
+        {
+          "text": ["{\"onTopic\": true}"]
+        }
+      ]
+    },
+    "nudges": 0
+  },
+  "script": {
+    "turns": [
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    }
+  ]
+}

@@ -18,6 +18,8 @@ export const channels = sqliteTable("channels", {
   model: text("model"),
   // JSON for a channel made by "New channel from here": where it came from and whether the history was carried over (see branch.ts).
   branch: text("branch"),
+  // The purpose statement version the user dismissed a drift nudge at: no more nudges until the statement changes.
+  driftDismissedVersion: integer("drift_dismissed_version"),
 });
 
 export const runs = sqliteTable(
@@ -192,4 +194,27 @@ export const summaries = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("summaries_version_idx").on(t.channelId, t.version)],
+);
+
+// One row per drift check (docs/design/context.md): a housekeeping call after a run that compares the purpose statement
+// with the latest user messages. Kept for the nudge rule (two off-topic checks in a row) and the debug view.
+export const driftChecks = sqliteTable(
+  "drift_checks",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    // The run whose end triggered the check; the nudge, if any, is shown with it.
+    runId: text("run_id").notNull(),
+    statementVersion: integer("statement_version").notNull(),
+    onTopic: integer("on_topic", { mode: "boolean" }).notNull(),
+    // A short name for the new topic when off topic.
+    topic: text("topic"),
+    // True on the check that produced a nudge, so the next pair of off-topic checks starts fresh.
+    nudged: integer("nudged", { mode: "boolean" }).notNull(),
+    tokensUsed: integer("tokens_used").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [index("drift_checks_channel_idx").on(t.channelId, t.createdAt)],
 );
