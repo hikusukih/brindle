@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { api } from "./api";
+import { type GoalCategory, goalCategories } from "./goal-templates";
 import { useTimeZone } from "./TimeZone";
 
 type Goal = { id: string; title: string; channelId: string; brief: { text: string }; nextRunAt: string | null };
@@ -153,16 +154,23 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
       .catch(() => setSchedulesAvailable(false));
   }, []);
 
-  const create = async () => {
+  const create = async (text = words) => {
     setBusy(true);
     setProblem(null);
     try {
-      setDraft(await api<Draft>("/api/goals/draft", { method: "POST", body: { text: words } }));
+      setDraft(await api<Draft>("/api/goals/draft", { method: "POST", body: { text } }));
     } catch (e) {
       setProblem((e as Error).message);
     } finally {
       setBusy(false);
     }
+  };
+
+  // A category's template is drafted like the user's own words. If that fails (no model, say), the template stays in the
+  // box so the user can edit it or write their own.
+  const fromCategory = (category: GoalCategory) => {
+    setWords(category.template);
+    void create(category.template);
   };
 
   return (
@@ -193,7 +201,7 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
               type="button"
               className="min-h-11 rounded-lg bg-slate-900 px-3 text-white disabled:opacity-50"
               disabled={busy || !words.trim()}
-              onClick={() => void create()}
+              onClick={() => void create(words)}
             >
               {busy ? "Drafting…" : "Create"}
             </button>
@@ -201,6 +209,14 @@ export function GoalsScreen({ empty }: { empty: { title: string; body: string } 
               Write it myself
             </button>
           </div>
+          <fieldset className="m-0 flex flex-wrap gap-2 border-0 p-0">
+            <legend className="sr-only">Categories</legend>
+            {goalCategories.map((c) => (
+              <button key={c.id} type="button" className={button} disabled={busy} onClick={() => fromCategory(c)}>
+                {c.label}
+              </button>
+            ))}
+          </fieldset>
           {problem && (
             <p role="alert" className="text-sm text-red-700">
               {problem}
