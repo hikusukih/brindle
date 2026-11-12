@@ -65,23 +65,25 @@ export function aadOfRow(row: Row): Buffer {
  * this directory and return only scrubbed responses. Nothing here, or anywhere else, returns a plaintext value.
  */
 export class Vault {
-  private key: Buffer;
+  // Real private fields, not TypeScript's `private`: those are ordinary properties at run time, so util.inspect, a
+  // logged error or (vault as any).key would hand out the master key's bytes.
+  #key: Buffer;
+  readonly #db: Db;
+  readonly #keyFile: string;
 
-  constructor(
-    private readonly db: Db,
-    key: Buffer,
-    private readonly keyFile: string,
-  ) {
-    this.key = key;
-    this.verifyKey();
+  constructor(db: Db, key: Buffer, keyFile: string) {
+    this.#db = db;
+    this.#key = key;
+    this.#keyFile = keyFile;
+    this.#verifyKey();
   }
 
   /** A wrong key file would otherwise surface as a failure on first use, long after startup. */
-  private verifyKey() {
-    const row = firstLive(this.db);
+  #verifyKey() {
+    const row = firstLive(this.#db);
     if (!row) return;
     try {
-      this.reveal(row, this.key);
+      this.#reveal(row, this.#key);
     } catch {
       throw new VaultError(
         "The master key file does not open the vault. It is the wrong file, or the vault was re-keyed elsewhere.",
@@ -89,7 +91,7 @@ export class Vault {
     }
   }
 
-  private reveal(row: Row, key: Buffer): string {
+  #reveal(row: Row, key: Buffer): string {
     return open(key, { nonce: row.nonce, ciphertext: row.ciphertext }, aadOfRow(row));
   }
 
@@ -115,7 +117,7 @@ export class Vault {
     if (input.kind !== "api_key" && input.headerName) throw new VaultError("Only an API key names a header.");
     if (input.expiresAt && input.expiresAt.getTime() <= now.getTime())
       throw new VaultError("That expiry is already past.");
-    const live = this.db
+    const live = this.#db
       .select()
       .from(secrets)
       .where(and(eq(secrets.name, input.name), isNull(secrets.revokedAt)))
@@ -129,7 +131,7 @@ export class Vault {
     const expiresAt = input.expiresAt?.toISOString() ?? null;
     const headerName = input.kind === "api_key" ? (input.headerName ?? null) : null;
     const sealed = seal(
-      this.key,
+      this.#key,
       input.value,
       aadFor({ id, name: input.name, kind: input.kind, headerName, expiresAt, scopeHash: hash }),
     );
@@ -147,13 +149,13 @@ export class Vault {
       lastUsedAt: null,
       revokedAt: null,
     };
-    this.db.insert(secrets).values(row).run();
+    this.#db.insert(secrets).values(row).run();
     return info(row, now);
   }
 
   /** Metadata for one secret, found by name or by the handle text. Never the value. */
   describe(handleOrName: string, now = new Date()): SecretInfo | null {
-    const row = byName(this.db, handleOrName);
+    const row = byName(this.#db, handleOrName);
     return row ? info(row, now) : null;
   }
 
@@ -162,7 +164,7 @@ export class Vault {
    * or channel may use, so a run cannot learn the names of secrets it is not allowed.
    */
   list(viewer?: { goalId?: string; channelId?: string }, now = new Date()): SecretInfo[] {
-    const all = this.db
+    const all = this.#db
       .select()
       .from(secrets)
       .all()
@@ -181,10 +183,10 @@ export class Vault {
 
   /** Revoking keeps the row, so history still names it, but the value is gone: a revoked secret cannot be used again. */
   revoke(handleOrName: string, now = new Date()): boolean {
-    const row = byName(this.db, handleOrName);
+    const row = byName(this.#db, handleOrName);
     if (!row || row.revokedAt) return false;
     // Overwrite the sealed value with a tombstone: revoke must mean the plaintext cannot come back from the database.
-    this.db
+    this.#db
       .update(secrets)
       .set({ revokedAt: now.toISOString(), nonce: "", ciphertext: "" })
       .where(eq(secrets.id, row.id))
@@ -198,21 +200,21 @@ export class Vault {
    */
   rotateMasterKey(now = new Date()): { rotated: number; retiredFile: string } {
     const next = randomBytes(masterKeyBytes);
-    const pending = `${this.keyFile}.new`;
+    const pending = `${this.#keyFile}.new`;
     writeKeyFile(pending, next);
     let rotated = 0;
-    this.db.transaction((tx) => {
+    this.#db.transaction((tx) => {
       for (const row of tx.select().from(secrets).all()) {
         if (row.revokedAt) continue;
-        const sealed: Sealed = seal(next, this.reveal(row, this.key), aadOfRow(row));
+        const sealed: Sealed = seal(next, this.#reveal(row, this.#key), aadOfRow(row));
         tx.update(secrets).set(sealed).where(eq(secrets.id, row.id)).run();
         rotated++;
       }
     });
-    const retiredFile = `${this.keyFile}.retired-${now.toISOString().replace(/[:.]/g, "-")}`;
-    renameSync(this.keyFile, retiredFile);
-    renameSync(pending, this.keyFile);
-    this.key = next;
+    const retiredFile = `${this.#keyFile}.retired-${now.toISOString().replace(/[:.]/g, "-")}`;
+    renameSync(this.#keyFile, retiredFile);
+    renameSync(pending, this.#keyFile);
+    this.#key = next;
     return { rotated, retiredFile };
   }
 }

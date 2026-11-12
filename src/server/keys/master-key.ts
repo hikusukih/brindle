@@ -1,12 +1,23 @@
 import { randomBytes } from "node:crypto";
-import { chmodSync, existsSync, mkdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { dirname, isAbsolute, relative, resolve } from "node:path";
+import { chmodSync, existsSync, mkdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
 import { VaultError } from "./scope.js";
 
 export const masterKeyBytes = 32;
 
+/**
+ * Where a path really is, following symlinks, even if it doesn't exist yet: the deepest part that exists is resolved
+ * and the rest is added back. Without this, a symlink into the data directory would pass the check below.
+ */
+function realPath(path: string): string {
+  const absolute = resolve(path);
+  if (existsSync(absolute)) return realpathSync(absolute);
+  const parent = dirname(absolute);
+  return parent === absolute ? absolute : join(realPath(parent), basename(absolute));
+}
+
 const insideDir = (child: string, parent: string) => {
-  const rel = relative(resolve(parent), resolve(child));
+  const rel = relative(realPath(parent), realPath(child));
   return rel === "" || (!rel.startsWith("..") && !isAbsolute(rel));
 };
 

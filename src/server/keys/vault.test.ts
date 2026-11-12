@@ -1,7 +1,18 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, mkdtempSync, readdirSync, readFileSync, renameSync, statSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readdirSync,
+  readFileSync,
+  renameSync,
+  statSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { inspect } from "node:util";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { openDatabase } from "../db/index.js";
@@ -103,17 +114,8 @@ describe("the vault's storage", () => {
 
   it("has no method that returns a plaintext value", () => {
     const names = Object.getOwnPropertyNames(Vault.prototype).sort();
-    expect(names).toEqual([
-      "constructor",
-      "describe",
-      "list",
-      "reveal",
-      "revoke",
-      "rotateMasterKey",
-      "store",
-      "verifyKey",
-    ]);
-    // reveal is private and unused outside the class; nothing public takes a handle and returns text.
+    expect(names).toEqual(["constructor", "describe", "list", "revoke", "rotateMasterKey", "store"]);
+    // Decryption lives in a #private method, so it isn't on the prototype at all; nothing public returns text.
     const ctx = setup();
     ctx.vault.store({ name: "weather", kind: "bearer", value, scope });
     for (const method of [
@@ -323,5 +325,46 @@ describe("errors", () => {
   it("are VaultErrors the HTTP layer can tell apart from bugs", () => {
     const { vault } = setup();
     expect(() => vault.store({ name: "x", kind: "bearer", value: "short", scope })).toThrow(VaultError);
+  });
+});
+
+describe("the master key stays out of reach", () => {
+  it("is in no inspection or dump of the vault", () => {
+    const ctx = setup();
+    ctx.vault.store({ name: "weather", kind: "bearer", value, scope });
+    const key = readFileSync(ctx.keyFile);
+    const dumps = [
+      inspect(ctx.vault, { showHidden: true, depth: 10 }),
+      JSON.stringify(ctx.vault),
+      JSON.stringify(Object.entries(ctx.vault)),
+    ];
+    for (const dump of dumps) {
+      for (const form of [key.toString("hex"), key.toString("base64"), [...key].join(", ")])
+        expect(dump).not.toContain(form);
+    }
+    expect((ctx.vault as unknown as Record<string, unknown>).key).toBeUndefined();
+  });
+
+  it("refuses a key path that reaches the data directory through a symlink", () => {
+    const root = mkdtempSync(join(tmpdir(), "brindle-vault-"));
+    const dataDir = join(root, "data");
+    mkdirSync(dataDir);
+    symlinkSync(dataDir, join(root, "link"));
+    const db = openDatabase(":memory:");
+    expect(() => openVault(db, { keyFile: join(root, "link", "master.key"), dataDir })).toThrow(
+      /outside the data directory/,
+    );
+    expect(existsSync(join(dataDir, "master.key"))).toBe(false);
+  });
+
+  it("refuses a key file inside a data directory that is itself a symlink", () => {
+    const root = mkdtempSync(join(tmpdir(), "brindle-vault-"));
+    const real = join(root, "real");
+    mkdirSync(real);
+    symlinkSync(real, join(root, "data"));
+    const db = openDatabase(":memory:");
+    expect(() => openVault(db, { keyFile: join(real, "keys", "master.key"), dataDir: join(root, "data") })).toThrow(
+      /outside the data directory/,
+    );
   });
 });
