@@ -41,7 +41,7 @@ export class Scheduler {
   constructor(
     private readonly db: Db,
     private readonly hooks: SchedulerHooks,
-    private readonly options: SchedulerOptions,
+    private options: SchedulerOptions,
   ) {
     this.pollMillis = options.pollMillis ?? 30_000;
     this.graceMillis = options.graceMillis ?? 6 * hour;
@@ -73,6 +73,40 @@ export class Scheduler {
     };
     this.db.insert(schedules).values(row).run();
     return row;
+  }
+
+  /** Changing the user's time zone moves every enabled schedule's next occurrence with it: "6:30" means 6:30 where the user is. */
+  setTimeZone(timeZone: string, now = new Date()) {
+    try {
+      new Intl.DateTimeFormat("en-US", { timeZone });
+    } catch {
+      throw new SchedulerError(`"${timeZone}" is not a time zone I know.`);
+    }
+    // Occurrences already due belong to the old zone's clock: bring them in as fires first, so the log still shows every one.
+    this.comeDue(now);
+    this.options = { ...this.options, timeZone };
+    for (const schedule of this.db.select().from(schedules).where(eq(schedules.enabled, true)).all()) {
+      this.db
+        .update(schedules)
+        .set({ nextFireAt: this.after(schedule.cron, now).toISOString() })
+        .where(eq(schedules.id, schedule.id))
+        .run();
+    }
+  }
+
+  /** The next occurrences of an expression in the user's zone, for showing before anything is created. */
+  upcoming(cron: string, count: number, from = new Date()): Date[] {
+    const found: Date[] = [];
+    let at = from;
+    for (let i = 0; i < count; i++) {
+      at = this.after(cron, at);
+      found.push(at);
+    }
+    return found;
+  }
+
+  get timeZone(): string {
+    return this.options.timeZone;
   }
 
   /** Disabling stops new occurrences; enabling picks up from the next one after now, never from the time it was off. */
@@ -315,4 +349,12 @@ export class Scheduler {
   private mark(fireId: string, state: Fire["state"], stamp: string) {
     this.db.update(scheduleFires).set({ state, updatedAt: stamp }).where(eq(scheduleFires.id, fireId)).run();
   }
+}
+
+// A schedule that fires more often than this is almost certainly a mistake, and every fire is a model run.
+export const minScheduleGapMillis = 15 * 60_000;
+
+/** True when any two of the given upcoming fires are closer than the floor. The first gap alone can be a long one (":00 and :10" asked at :11), so callers pass several fires. */
+export function firesTooOften(fires: Date[]): boolean {
+  return fires.slice(1).some((d, i) => d.getTime() - (fires[i] as Date).getTime() < minScheduleGapMillis);
 }

@@ -1,6 +1,10 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
-import { getChannel, listChannels } from "./channels.js";
+import { ArtifactStore } from "./artifacts.js";
+import { createChannel, getChannel, listChannels } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { runs, schedules } from "./db/schema.js";
 import {
@@ -138,6 +142,45 @@ describe("goals", () => {
     }
     expect(getChannel(db, goal.channelId)).toMatchObject({ name: "Rust", archivedAt: null });
     expect(getGoal(db, goal.id).status).toBe("active");
+  });
+
+  it("marks goal channels in the channel list with their goal's id", async () => {
+    const db = setup();
+    const app = createApp({ db });
+    const goal = createGoal(db, { title: "Rust", brief: "learn" });
+    createChannel(db, "Plain");
+    const list = (await (await app.request("/api/channels")).json()) as { id: string; goalId: string | null }[];
+    expect(list.find((c) => c.id === goal.channelId)?.goalId).toBe(goal.id);
+    expect(list.filter((c) => c.goalId === null)).toHaveLength(1);
+  });
+
+  it("deleting a goal keeps its artifacts unless the request lists them", async () => {
+    const db = setup();
+    const store = new ArtifactStore(db, mkdtempSync(join(tmpdir(), "brindle-goal-")));
+    const app = createApp({ db, artifacts: store });
+    const del = (id: string, body?: unknown) =>
+      app.request(`/api/goals/${id}`, {
+        method: "DELETE",
+        body: body ? JSON.stringify(body) : undefined,
+        headers: { "content-type": "application/json" },
+      });
+    const make = (channelId: string) => {
+      const origin = { scope: "channel" as const, scopeId: channelId, runId: "r" };
+      return [
+        store.create({ title: "a", kind: "code", content: "x" }, origin),
+        store.create({ title: "b", kind: "code", content: "y" }, origin),
+      ];
+    };
+    const one = createGoal(db, { title: "One", brief: "x" });
+    make(one.channelId);
+    expect((await del(one.id)).status).toBe(204);
+    expect(store.list({}).length).toBe(2);
+
+    const two = createGoal(db, { title: "Two", brief: "x" });
+    const [a] = make(two.channelId);
+    expect((await del(two.id, { deleteArtifacts: "nope" })).status).toBe(400);
+    expect((await del(two.id, { deleteArtifacts: [a?.id] })).status).toBe(204);
+    expect(store.list({}).length).toBe(3);
   });
 
   it("deleting a goal leaves a channel's statements with the same id alone", () => {

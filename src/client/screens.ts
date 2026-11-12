@@ -25,6 +25,12 @@ export const screens = [
     label: "Artifacts",
     empty: { title: "No artifacts yet", body: "Documents, pages and files your agent makes are collected here." },
   },
+  {
+    id: "settings",
+    label: "Settings",
+    // Settings has no empty state; the field keeps every screen the same shape.
+    empty: { title: "Settings", body: "How your agent is set up." },
+  },
 ] as const;
 
 export type ScreenId = (typeof screens)[number]["id"];
@@ -38,4 +44,10 @@ export function screenFromHash(hash: string): ScreenId {
 export function channelIdFromHash(hash: string): string | null {
   const [screen, id] = hash.replace(/^#\/?/, "").split("/");
   return screen === "channels" && id ? decodeURIComponent(id) : null;
+}
+
+/** `#/channels/<id>/runs/<runId>` points at one run in a channel, so the gallery can link to the run an artifact came from. */
+export function runIdFromHash(hash: string): string | null {
+  const [screen, , part, runId] = hash.replace(/^#\/?/, "").split("/");
+  return screen === "channels" && part === "runs" && runId ? decodeURIComponent(runId) : null;
 }

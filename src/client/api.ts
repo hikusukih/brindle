@@ -8,6 +8,10 @@ export type Channel = {
   archivedAt: string | null;
   /** A spec such as "openai:gpt-4o"; null follows the server default. */
   model: string | null;
+  /** The goal that owns this channel, or null for an ordinary one. Its rename, archive and delete go through the goal. */
+  goalId: string | null;
+  /** JSON about a channel made by "New channel from here"; null otherwise. */
+  branch?: string | null;
 };
 
 export type RunEvent = { id: string; runId: string; seq: number; type: string; data: string; createdAt: string };
@@ -41,10 +45,28 @@ export async function api<T>(path: string, init?: { method?: string; body?: unkn
   return res.status === 204 ? (undefined as T) : ((await res.json()) as T);
 }
 
+// The side rail lists channels too, and a change made on the Channels screen does not change the hash, so it says so here.
+export const channelsChanged = "brindle:channels-changed";
+export const announceChannelsChanged = () => window.dispatchEvent(new Event(channelsChanged));
+
+/** The bytes of an artifact's file. The token travels in the header, which is why a plain link cannot open it. */
+export async function fetchArtifactFile(id: string): Promise<Blob> {
+  const res = await fetch(`/api/artifacts/${encodeURIComponent(id)}/file`, { headers: authHeaders() });
+  if (res.status === 401) {
+    setToken(null);
+    window.dispatchEvent(new Event(unauthorizedEvent));
+  }
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as { message?: string } | null;
+    throw new Error(body?.message ?? `Server answered ${res.status}`);
+  }
+  return res.blob();
+}
+
 export type Artifact = {
   id: string;
   title: string;
-  kind: "document" | "code" | "data" | "page" | "link";
+  kind: "document" | "code" | "data" | "page" | "link" | "audio";
   scope: "channel" | "goal";
   scopeId: string;
   /** The scope's name when the artifact was made. */
@@ -56,3 +78,21 @@ export type Artifact = {
   /** True while the channel that made it still exists. */
   scopeLive: boolean;
 };
+
+export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };
+export type ModelSettingValues = {
+  contextWindow?: number;
+  maxSteps?: number;
+  maxTokens?: number;
+  maxMillis?: number;
+  housekeepingMillis?: number;
+  warmCache?: boolean;
+};
+export type ModelSettingsView = {
+  spec: string;
+  configured: ModelSettingValues;
+  effective: Required<ModelSettingValues>;
+  serverWindow: number | null;
+  problem: string | null;
+};
+export type ModelList = { default: string | null; models: ModelInfo[] };
