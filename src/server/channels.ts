@@ -7,7 +7,7 @@ export type Channel = typeof channels.$inferSelect;
 
 export class ChannelError extends Error {
   constructor(
-    readonly code: "not_found" | "archived" | "invalid_name" | "invalid_model",
+    readonly code: "not_found" | "archived" | "invalid_name" | "invalid_model" | "goal_channel" | "run_unfinished",
     message: string,
   ) {
     super(message);
@@ -42,6 +42,7 @@ export function createChannel(db: Db, name: unknown, now = new Date()): Channel 
     updatedAt: stamp,
     archivedAt: null,
     model: null,
+    branch: null,
   };
   db.insert(channels).values(row).run();
   return row;
