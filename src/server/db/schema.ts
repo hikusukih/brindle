@@ -172,6 +172,27 @@ export const contextReports = sqliteTable(
   ],
 );
 
+// Compaction output (docs/design/context.md): append-only versions per channel, the highest is current. The runs and
+// events a summary covers are never touched.
+export const summaries = sqliteTable(
+  "summaries",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    // The last run folded into this summary; null for a summary that covers no runs of this channel.
+    throughRunId: text("through_run_id"),
+    text: text("text").notNull(),
+    // JSON string[] of artifact ids the text refers to.
+    artifacts: text("artifacts").notNull(),
+    tokensUsed: integer("tokens_used").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("summaries_version_idx").on(t.channelId, t.version)],
+);
+
 // The key manager's vault (docs/design/key-manager.md). Only src/server/keys reads or writes this table; the value is
 // ciphertext, bound to the row's id, name, kind, header, expiry and scope so it cannot be moved to another secret or have any of those edited.
 export const secrets = sqliteTable(

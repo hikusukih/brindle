@@ -58,11 +58,21 @@ OPENAI_API_KEY=... BRINDLE_MODEL=openai:<model> npm start
 
 Each channel shows the model it uses under its name, and a channel can be set to a different one with the same `provider:name` spelling; clearing the field returns it to the default. A model whose key is missing is refused when you set it. With no default and no choice on the channel, sending a message answers 503.
 
+### Window and limits per model
+
+Put a `model-settings.json` in the data directory to set numbers per model, keyed by the same `provider:name` spec. Every field is optional: `contextWindow` (tokens), `maxSteps`, `maxTokens`, `maxMillis` (a run's time limit), `housekeepingMillis` and `warmCache`. A model with no entry gets defaults chosen for a CPU-only llama.cpp host: a 32,000-token window, 10 steps, 100,000 tokens, 5 minutes per run. The file holds no secrets. A model named in it is also offered in Settings and in a channel's model list, as if it were in `BRINDLE_MODELS`, so a local model can be added from the file alone (a key that is not written `openai:<model>`, `anthropic:<model>` or `scripted` is ignored with a warning at startup). When `BRINDLE_OPENAI_BASE_URL` points at a local server and no window is set, the server's own is asked for at startup (`/props`, as llama.cpp serves it) and used; a configured window larger than the server's stops the server from starting, with a message saying so. Each channel shows its model's window and limits under its name.
+
+### Purpose statements
+
+After a channel's third finished run, one housekeeping call drafts a sentence or two on what the channel is for. It is shown under the channel name as a draft, and the user can edit it in place or ask for a new draft; text the user wrote is never replaced by a draft. It is sent with every run in that channel. Housekeeping calls use the channel's own model unless `BRINDLE_UTILITY_MODEL` names another (same `provider:name` spelling), such as a cheaper one.
+
 ### The vault
 
 Credentials for goals will live in a vault, encrypted with a master key that is kept outside the data directory so a backup of the data alone is useless. Set `BRINDLE_MASTER_KEY_FILE` to the path of a file (for example on a separate Docker volume). If the file does not exist and the vault is empty, the server creates it with owner-only permissions; if the vault holds secrets and the file is missing, readable by others, or the wrong key, the server refuses to start and says why. Nothing uses the vault yet. Keep a copy of the key file somewhere safe: without it the secrets cannot be recovered.
 
 ### Trying runs with the scripted model
+
+Long channels are compacted after a run ends: older runs are folded into a running summary (the transcript you read is never changed). The summary is written by the same model as the channel by default; set `BRINDLE_UTILITY_MODEL` (written `provider:name`) to use another, such as a cheaper one.
 
 For development and acceptance without a key, set `BRINDLE_MODEL=scripted` and `BRINDLE_SCRIPTED_FIXTURE` to a JSON file of canned turns.
 
@@ -77,7 +87,7 @@ Each turn answers one model call and the script does not loop, so a fixture of N
 
 ### Tools
 
-The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
+The model can call `web_fetch`, which reads a public page as text (GET only; addresses inside your machine or network are refused unless `BRINDLE_WEB_FETCH_ALLOW_PRIVATE=1`). `web_search` appears when `BRINDLE_SEARCH_URL` points at a SearXNG-style service with its JSON format enabled (for example `http://127.0.0.1:8080`); no key is involved. `speak` appears when `BRINDLE_SPEECH_URL` points at an OpenAI-compatible speech API (the base, such as `http://127.0.0.1:8880/v1`; the request goes to `/audio/speech`). It saves the speech as an audio artifact with a player in the gallery. `BRINDLE_SPEECH_MODEL` (default `tts-1`) and `BRINDLE_SPEECH_VOICE` (default `alloy`) choose what to ask for, and `BRINDLE_SPEECH_API_KEY` is sent as a bearer token if the endpoint wants one. Tool results are cut to a budget before they go back to the model. A tool that does something in the world would stop and ask first: the channel shows an approval card, and the run waits, even across a restart, until you approve or decline. None of the built-in tools need that yet. The design is in `docs/design/tools.md`.
 
 ## Plug-in tools over MCP
 

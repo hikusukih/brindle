@@ -2,8 +2,9 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createApp } from "./app.js";
 import { createChannel } from "./channels.js";
+import { runContext } from "./context.js";
 import { openDatabase } from "./db/index.js";
-import { events, runs } from "./db/schema.js";
+import { channels, events, runs } from "./db/schema.js";
 import { type ModelAdapter, ModelError } from "./model/adapter.js";
 import { type ScriptedFixture, ScriptedModel } from "./model/scripted.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
@@ -84,6 +85,32 @@ describe("run engine", () => {
   });
 
   describe("limits", () => {
+    it("takes its limits and window from the channel's model, and names that model in the context report", async () => {
+      const db = openDatabase(":memory:");
+      const scripted = new ScriptedModel({ turns: Array.from({ length: 12 }, () => ({ toolCalls: [call("c")] })) });
+      const limitsFor = (spec: string | null): RunLimits => ({
+        ...defaultLimits,
+        maxSteps: spec === "scripted:small" ? 2 : 4,
+        contextWindow: spec === "scripted:small" ? 8_000 : 16_000,
+        model: spec ?? "scripted:big",
+      });
+      const engine = new RunEngine(db, scripted, limitsFor);
+      const small = createChannel(db, "Small");
+      db.update(channels).set({ model: "scripted:small" }).where(eq(channels.id, small.id)).run();
+      const big = createChannel(db, "Big");
+
+      const a = engine.start(small.id, "go");
+      await engine.whenSettled(a.id);
+      const b = engine.start(big.id, "go");
+      await engine.whenSettled(b.id);
+      expect(engine.get(a.id)).toMatchObject({ stopReason: "step limit (2) reached" });
+      expect(engine.get(b.id)).toMatchObject({ stopReason: "step limit (4) reached" });
+
+      const report = (runId: string) => runContext(db, runId)[0]?.report;
+      expect(report(a.id)).toMatchObject({ model: "scripted:small", window: 8_000 });
+      expect(report(b.id)).toMatchObject({ model: "scripted:big", window: 16_000 });
+    });
+
     it("stops at the step limit with a visible reason", async () => {
       const turns = Array.from({ length: 5 }, (_, i) => ({ toolCalls: [call(`c${i}`)] }));
       const { engine, channel, types } = setup({ turns }, { maxSteps: 2 });

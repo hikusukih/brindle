@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "f268e325-60dd-4d7b-bc28-62eb22931baf",
+  "id": "3dc66f08-5603-4b21-b730-a3873ccf8933",
   "prevId": "d4834a6c-7491-4cb7-b0b1-e054ad9e771b",
   "tables": {
     "app_meta": {
@@ -748,8 +748,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "secrets": {
-      "name": "secrets",
+    "summaries": {
+      "name": "summaries",
       "columns": {
         "id": {
           "name": "id",
@@ -758,51 +758,44 @@
           "notNull": true,
           "autoincrement": false
         },
-        "name": {
-          "name": "name",
+        "channel_id": {
+          "name": "channel_id",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "kind": {
-          "name": "kind",
-          "type": "text",
+        "version": {
+          "name": "version",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "header_name": {
-          "name": "header_name",
+        "through_run_id": {
+          "name": "through_run_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
         },
-        "scope": {
-          "name": "scope",
+        "text": {
+          "name": "text",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "scope_hash": {
-          "name": "scope_hash",
+        "artifacts": {
+          "name": "artifacts",
           "type": "text",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
         },
-        "nonce": {
-          "name": "nonce",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "ciphertext": {
-          "name": "ciphertext",
-          "type": "text",
+        "tokens_used": {
+          "name": "tokens_used",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
@@ -813,40 +806,33 @@
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false
-        },
-        "expires_at": {
-          "name": "expires_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_used_at": {
-          "name": "last_used_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "revoked_at": {
-          "name": "revoked_at",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
-        "secrets_live_name": {
-          "name": "secrets_live_name",
+        "summaries_version_idx": {
+          "name": "summaries_version_idx",
           "columns": [
-            "name"
+            "channel_id",
+            "version"
           ],
-          "isUnique": true,
-          "where": "\"secrets\".\"revoked_at\" is null"
+          "isUnique": true
         }
       },
-      "foreignKeys": {},
+      "foreignKeys": {
+        "summaries_channel_id_channels_id_fk": {
+          "name": "summaries_channel_id_channels_id_fk",
+          "tableFrom": "summaries",
+          "tableTo": "channels",
+          "columnsFrom": [
+            "channel_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}

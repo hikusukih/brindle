@@ -1,4 +1,4 @@
-import { type Artifact, type ArtifactStore, artifactKinds } from "../artifacts.js";
+import { type Artifact, type ArtifactStore, artifactKinds, writableKinds } from "../artifacts.js";
 import type { Tool } from "./registry.js";
 
 /** `local`: it writes, but only inside Brindle's own data directory. */
@@ -12,7 +12,7 @@ export function createArtifactTool(store: ArtifactStore): Tool {
       type: "object",
       properties: {
         title: { type: "string" },
-        kind: { type: "string", enum: [...artifactKinds] },
+        kind: { type: "string", enum: [...writableKinds] },
         content: { type: "string" },
         filename: { type: "string" },
       },
@@ -74,6 +74,7 @@ export function readArtifactTool(store: ArtifactStore): Tool {
     async execute(args) {
       const a = store.get(String(args.id));
       if (!a) return "No artifact has that id.";
+      if (a.kind === "audio") return `${describe(a)}\n\nThis is an audio file; it has no text to read.`;
       const text = store.content(a);
       if (text === undefined) return "That artifact's file is missing.";
       return `${describe(a)}\n\n${text}`;
