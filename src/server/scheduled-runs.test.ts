@@ -5,6 +5,7 @@ import { openDatabase } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
 import { createGoal } from "./goals.js";
 import { type ModelAdapter, ModelError, type ModelEvent, type ModelRequest } from "./model/adapter.js";
+import { listReports, reportRunEnded } from "./reports.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { Scheduler, type SchedulerOptions } from "./scheduler.js";
 import { type ToolContext, ToolRegistry } from "./tools/registry.js";
@@ -305,5 +306,19 @@ describe("scheduled runs", () => {
     scheduler.tick(at("2026-10-28T10:31:00Z"));
     expect(scheduler.log().map((f) => f.state)).toEqual(["failed_to_start"]);
     expect(db.select().from(runs).all()).toEqual([]);
+  });
+
+  // The reports store landed apart from this wiring; this holds the two together the way main.ts wires them.
+  it("a scheduled run that ends leaves a run report on its goal", async () => {
+    const { db, engine, scheduler, goal, startedRuns } = setup();
+    engine.onRunEnded = (runId) => reportRunEnded(db, runId);
+    const g = goal("Morning brief", "Write today's brief.");
+    scheduler.tick(due);
+    const [runId] = startedRuns();
+    await engine.whenSettled(runId as string);
+
+    expect(listReports(db, { kind: "run", scope: { kind: "goal", id: g.id } })).toMatchObject([
+      { runId, title: "Morning brief: run finished", body: "done" },
+    ]);
   });
 });

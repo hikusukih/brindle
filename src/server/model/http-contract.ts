@@ -11,7 +11,7 @@ export function fakeFetch(behavior: ContractBehavior, prefix: "openai" | "anthro
       const status = { rate_limit: 429, unavailable: 503, auth: 401 }[behavior.error];
       return new Response('{"error":"scripted failure"}', { status });
     }
-    const name = behavior.kind === "tool_call" ? "tool-call" : "text";
+    const name = behavior.kind === "tool_call" ? "tool-call" : behavior.kind === "cached_text" ? "cached-text" : "text";
     let text = fixture(`${prefix}-${name}`);
     if (behavior.kind === "fail_midstream") text = text.slice(0, text.indexOf("\n\n", text.indexOf("Hel")) + 2);
     const bytes = new TextEncoder().encode(text);

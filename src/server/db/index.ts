@@ -7,9 +7,9 @@ import * as schema from "./schema.js";
 export type Db = BetterSQLite3Database<typeof schema>;
 
 // The same relative path holds from src/server/db and from dist/server/db.
-const migrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
+export const defaultMigrationsFolder = fileURLToPath(new URL("../../../drizzle", import.meta.url));
 
-export function openDatabase(filename: string): Db {
+export function openDatabase(filename: string, migrationsFolder = defaultMigrationsFolder): Db {
   const sqlite = new Database(filename);
   sqlite.pragma("journal_mode = WAL");
   sqlite.pragma("foreign_keys = ON");

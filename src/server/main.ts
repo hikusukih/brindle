@@ -7,7 +7,8 @@ import { ArtifactStore } from "./artifacts.js";
 import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
 import { modelSummarizer } from "./compaction.js";
-import { openDatabase } from "./db/index.js";
+import { openDatabaseSafely } from "./db/backup.js";
+import type { Db } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
@@ -20,6 +21,7 @@ import {
   updateModelSettings,
 } from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
+import { reportRunEnded } from "./reports.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { Scheduler } from "./scheduler.js";
 import { getSetting } from "./settings.js";
@@ -35,7 +37,17 @@ const port = Number(process.env.PORT ?? 8787);
 
 mkdirSync(dataDir, { recursive: true });
 migrateLegacyDatabase(dataDir);
-const db = openDatabase(join(dataDir, "brindle.sqlite"));
+let db: Db;
+try {
+  // A copy goes to backups/ first whenever migrations are pending, so an upgrade never changes the only copy.
+  db = await openDatabaseSafely(join(dataDir, "brindle.sqlite"), {
+    backupsDir: join(dataDir, "backups"),
+    log: (line) => console.log(line),
+  });
+} catch (error) {
+  console.error((error as Error).message);
+  process.exit(1);
+}
 recordFirstStart(db);
 const token = resolveToken(db, process.env);
 if (token.generated) {
@@ -121,6 +133,7 @@ const goalDrafter = new GoalDrafter(
   scheduler,
 );
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
+engine.onRunEnded = (runId) => reportRunEnded(db, runId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);

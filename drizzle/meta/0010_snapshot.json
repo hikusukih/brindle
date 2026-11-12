@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "51c89992-d181-490f-aa4d-cfbc8c2e91d4",
+  "id": "9b9ac6df-eb6e-47e7-82b5-60c73fc85b94",
   "prevId": "ed024748-dceb-4b90-98dc-8ec65060134c",
   "tables": {
     "app_meta": {
@@ -486,20 +486,13 @@
           "notNull": false,
           "autoincrement": false
         },
-        "goal_id": {
-          "name": "goal_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
+        "tokens": {
+          "name": "tokens",
+          "type": "integer",
           "primaryKey": false,
           "notNull": true,
           "autoincrement": false,
-          "default": "'user'"
+          "default": 0
         }
       },
       "indexes": {

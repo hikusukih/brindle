@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Cron } from "croner";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "./db/index.js";
-import { events, runs, scheduleFires, schedules } from "./db/schema.js";
+import { events, goals, runs, scheduleFires, schedules } from "./db/schema.js";
+import { writeSystemReport } from "./reports.js";
 
 // See docs/design/goals.md. Starting values, tuned from the log.
 const hour = 60 * 60 * 1000;
@@ -180,6 +181,8 @@ export class Scheduler {
         .set({ state: "failed_to_start", updatedAt: now.toISOString() })
         .where(eq(scheduleFires.id, fire.id))
         .run();
+      const schedule = this.db.select().from(schedules).where(eq(schedules.id, fire.scheduleId)).get();
+      if (schedule) this.notify("schedule_failed", schedule, fire.dueAt, now);
       failed++;
     }
     this.tick(now);
@@ -254,6 +257,8 @@ export class Scheduler {
     const next = this.after(schedule.cron, now);
     const stamp = now.toISOString();
 
+    const missed = runsLast ? occurrences.slice(0, -1) : occurrences;
+    if (missed.length) this.notify("schedule_missed", schedule, (missed[0] as Date).toISOString(), now, missed.length);
     this.db.transaction((tx) => {
       for (const occurrence of occurrences) {
         const isLast = occurrence === last;
@@ -301,6 +306,7 @@ export class Scheduler {
       }
       if (now.getTime() - new Date(fire.dueAt).getTime() > this.graceMillis) {
         this.mark(fire.id, "skipped_busy", stamp);
+        this.notify("schedule_missed", schedule, fire.dueAt, now);
         continue;
       }
       if (inFlight >= this.maxConcurrent || claimed.has(schedule.goalId)) continue;
@@ -326,6 +332,7 @@ export class Scheduler {
         // Recorded, not retried, as recover() does: a run that fails to prepare would fail again every poll.
         console.error(`Fire ${fire.id} failed to start: ${(error as Error).message}`);
         this.mark(fire.id, "failed_to_start", stamp);
+        this.notify("schedule_failed", schedule, fire.dueAt, now);
         continue;
       }
       claimed.add(schedule.goalId);
@@ -336,6 +343,7 @@ export class Scheduler {
         // The run row exists but never began; recording it now saves waiting for recover() at the next restart.
         console.error(`Fire ${fire.id} failed to start: ${(error as Error).message}`);
         this.mark(fire.id, "failed_to_start", stamp);
+        this.notify("schedule_failed", schedule, fire.dueAt, now);
         inFlight--;
       }
     }
@@ -350,6 +358,32 @@ export class Scheduler {
       .where(and(eq(scheduleFires.state, "started"), inArray(runs.status, ["running"])))
       .get();
     return row?.n ?? 0;
+  }
+
+  /** A fixed-template notice that a fire did not run; a report failing to write must never stop the scheduler. */
+  private notify(
+    template: "schedule_failed" | "schedule_missed",
+    schedule: Schedule,
+    due: string,
+    now: Date,
+    times = 1,
+  ) {
+    try {
+      const goal = this.db.select({ title: goals.title }).from(goals).where(eq(goals.id, schedule.goalId)).get();
+      writeSystemReport(
+        this.db,
+        {
+          template,
+          subject: schedule.id,
+          scope: { kind: "goal", id: schedule.goalId },
+          args: { goal: goal?.title ?? "", due },
+          times,
+        },
+        now,
+      );
+    } catch (error) {
+      console.error(`Report for schedule ${schedule.id} not written: ${(error as Error).message}`);
+    }
   }
 
   private mark(fireId: string, state: Fire["state"], stamp: string) {

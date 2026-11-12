@@ -14,7 +14,7 @@ import {
 } from "./context.js";
 import type { Db } from "./db/index.js";
 import { events, goals, runs } from "./db/schema.js";
-import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
+import { type Message, type ModelAdapter, ModelError, type ToolCall, type Usage } from "./model/adapter.js";
 import type { SchedulerHooks } from "./scheduler.js";
 import { scopeStatementFor } from "./scope-statements.js";
 import { describeToday } from "./time-zone.js";
@@ -27,7 +27,10 @@ export type RunEvent = typeof events.$inferSelect;
 export type RunLimits = {
   /** Model calls in one run. */
   maxSteps: number;
-  /** Input plus output tokens summed over the run. */
+  /**
+   * Tokens the server had to process, summed over the run: input it did not serve from its cache, plus output. Where
+   * a server reports no cached count, all input counts (docs/decisions.md).
+   */
   maxTokens: number;
   maxMillis: number;
   /** The model's context window in tokens. */
@@ -92,10 +95,22 @@ type LiveRun = {
   waiters: Map<string, () => void>;
 };
 
+/**
+ * What one model call adds toward the token limit: the input the server had to read plus the output. Without a cached
+ * count from the server, all input counts, so a run is never under-counted.
+ */
+export function countedTokens(usage: Usage): { tokens: number; allInput: boolean } {
+  const cached = usage.cachedInputTokens;
+  if (cached === undefined) return { tokens: usage.inputTokens + usage.outputTokens, allInput: true };
+  return { tokens: Math.max(0, usage.inputTokens - cached) + usage.outputTokens, allInput: false };
+}
+
 /** What a run needs to pick up where a restart left it: the unanswered calls of its last step and its counters. */
 type Resume = {
   step: number;
   tokens: number;
+  /** True once a step's usage came without a cached count, so all of its input was counted. */
+  countedAllInput: boolean;
   spentMillis: number;
   calls: ToolCall[];
   decisions: Map<string, Decision>;
@@ -159,6 +174,8 @@ export class RunEngine {
   private readonly prepared = new Map<string, string>();
   /** Called after a run ends as done, for housekeeping such as drafting a purpose statement. Must not throw into the run. */
   onRunDone?: (channelId: string) => void;
+  /** Called when a run ends in any state but cancelled, with its id: reports are written from it. Must not throw into the run. */
+  onRunEnded?: (runId: string) => void;
 
   constructor(
     private readonly db: Db,
@@ -208,6 +225,7 @@ export class RunEngine {
       endedAt: null,
       goalId: null,
       trigger: "user",
+      tokens: 0,
     };
     this.db.insert(runs).values(run).run();
     this.append(run.id, "message", { text: message }, now);
@@ -410,6 +428,7 @@ export class RunEngine {
     const resume: Resume = {
       step: Number(snapshot.step),
       tokens: Number(snapshot.tokens),
+      countedAllInput: snapshot.countedAllInput === true,
       spentMillis: Number(snapshot.spentMillis),
       calls: calls.filter((c) => !answered.has(c.id)),
       decisions,
@@ -529,6 +548,7 @@ export class RunEngine {
     arm();
 
     let tokens = resume?.tokens ?? 0;
+    let countedAllInput = resume?.countedAllInput ?? false;
     let carried = resume?.calls;
     const scope = run.goalId
       ? ({ kind: "goal", id: run.goalId } as const)
@@ -578,7 +598,10 @@ export class RunEngine {
             else if (ev.type === "tool_call") calls.push(ev.call);
             else {
               stop = ev.stop;
-              tokens += ev.usage.inputTokens + ev.usage.outputTokens;
+              const counted = countedTokens(ev.usage);
+              tokens += counted.tokens;
+              if (counted.allInput) countedAllInput = true;
+              this.db.update(runs).set({ tokens }).where(eq(runs.id, runId)).run();
             }
           }
           if (text) this.append(runId, "text", { text });
@@ -618,6 +641,7 @@ export class RunEngine {
             // What a restart needs to carry on from here.
             step,
             tokens,
+            countedAllInput,
             spentMillis: spent + (Date.now() - since),
           });
         }
@@ -673,7 +697,11 @@ export class RunEngine {
           });
           messages.push({ role: "tool", toolCallId: call.id, content: sized.text });
         }
-        if (tokens >= maxTokens) return this.stopForLimit(runId, `token limit (${maxTokens}) reached`);
+        if (tokens >= maxTokens)
+          return this.stopForLimit(
+            runId,
+            `token limit (${maxTokens}) reached, counting ${countedAllInput ? "all input, since the server reported no cached count," : "uncached input"} plus output`,
+          );
         if (step >= maxSteps) return this.stopForLimit(runId, `step limit (${maxSteps}) reached`);
       }
     } catch (error) {
@@ -751,6 +779,13 @@ export class RunEngine {
     this.listeners.delete(runId);
     // After everything the user waits on; a failing hook must never touch the run.
     const run = this.db.select().from(runs).where(eq(runs.id, runId)).get();
+    if (status !== "cancelled") {
+      try {
+        this.onRunEnded?.(runId);
+      } catch {
+        // Reports are bookkeeping; the run is already finished.
+      }
+    }
     if (run && status === "done") {
       try {
         this.onRunDone?.(run.channelId);

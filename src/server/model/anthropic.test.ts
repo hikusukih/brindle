@@ -6,7 +6,10 @@ import { httpFactory } from "./http-contract.js";
 const make = (fetch: typeof globalThis.fetch) =>
   new AnthropicAdapter({ model: "test-model", apiKey: "sk-test-1234abcd1234abcd", fetch });
 
-runAdapterContract("AnthropicAdapter", httpFactory(make, "anthropic"));
+runAdapterContract("AnthropicAdapter", httpFactory(make, "anthropic"), {
+  text: { inputTokens: 12, outputTokens: 3 },
+  cachedText: { inputTokens: 12, outputTokens: 3, cachedInputTokens: 8 },
+});
 
 describe("AnthropicAdapter request", () => {
   it("lifts the system prompt and groups tool results into one user turn", async () => {

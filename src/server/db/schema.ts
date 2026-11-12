@@ -38,6 +38,8 @@ export const runs = sqliteTable(
     goalId: text("goal_id"),
     // user | schedule: who started it. A scheduled run has nobody watching, so it gets the shorter approval timeout.
     trigger: text("trigger").notNull().default("user"),
+    // Tokens counted toward the run's token limit so far: uncached input plus output (see countedTokens in runs.ts).
+    tokens: integer("tokens").notNull().default(0),
   },
   (t) => [index("runs_channel_idx").on(t.channelId, t.startedAt)],
 );
@@ -197,4 +199,36 @@ export const summaries = sqliteTable(
     createdAt: text("created_at").notNull(),
   },
   (t) => [uniqueIndex("summaries_version_idx").on(t.channelId, t.version)],
+);
+
+// One store for everything that is not conversation: found items for the feed, accounts of scheduled runs, and the harness's own notices (docs/design/reports.md).
+export const reports = sqliteTable(
+  "reports",
+  {
+    id: text("id").primaryKey(),
+    // found | run | system
+    kind: text("kind").notNull(),
+    // goal | channel; both null for an instance-wide notice.
+    scopeKind: text("scope_kind"),
+    scopeId: text("scope_id"),
+    // The run that produced it, when there is one. Plain text: a report outlives a deleted run.
+    runId: text("run_id"),
+    title: text("title").notNull(),
+    body: text("body").notNull(),
+    link: text("link"),
+    occurredAt: text("occurred_at").notNull(),
+    // Null until read.
+    readAt: text("read_at"),
+    // found only: the normalized link, or a hash of the normalized title and date.
+    dedupeKey: text("dedupe_key"),
+    // system only: the template name and what it is about, so an identical notice within the hour becomes a count.
+    template: text("template"),
+    subject: text("subject"),
+    count: integer("count").notNull().default(1),
+  },
+  (t) => [
+    uniqueIndex("reports_dedupe_idx").on(t.scopeKind, t.scopeId, t.dedupeKey),
+    index("reports_scope_idx").on(t.scopeKind, t.scopeId, t.occurredAt),
+    index("reports_kind_idx").on(t.kind, t.occurredAt),
+  ],
 );

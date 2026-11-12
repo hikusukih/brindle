@@ -20,6 +20,7 @@ There is no index: the folders are the plan. One box per file, so PRs that add, 
 ## Box IDs and needs
 
 - Every box has an ID such as **P1.2**. An ID never changes and is never reused, even if the box is reworded, moved or split. A box added later takes the next unused number in its phase.
+- Deploy first: `docs/deploy-criteria.md` lists the boxes on the way to a first deployment. Among free boxes, those and the boxes they need are taken before all others, in the order below. Only when none of them is free does the order below run over the rest. A box that waits on a merge is not free, so the rest of the queue is never held up by the list.
 - Order: among free boxes, take the one in the lowest phase folder (numbered phases in order, then `A-the-whole-thing/`), then the lowest ID within it. IDs compare by number, and a suffixed ID comes right after its base: P2.4, P2.4a, P2.4b, P2.5, P2.10. A box that should wait for another says so in its needs; nothing else orders the queue.
 - Every box ends with what it needs, such as _needs P1.1, P1.3_. A box is free to take only when every ID it needs is checked on `main`. Boxes are checked inside their own PR, so checked on `main` means merged.
 - _needs nothing_ means the box can be taken now. _needs every box in a numbered phase_ means every box in every `P<n>-` folder.
