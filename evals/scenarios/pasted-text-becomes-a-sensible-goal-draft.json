@@ -1,0 +1,25 @@
+{
+  "name": "pasted-text-becomes-a-sensible-goal-draft",
+  "description": "Pasted notes about learning Rust become a draft with a title, a brief and a weekly schedule, and nothing exists until the form is confirmed.",
+  "messages": [],
+  "goalDraft": {
+    "paste": "I want to get through the Rust book, one chapter a week, and I'd like a nudge every Monday at 9 with the next exercise.",
+    "expect": {
+      "drafted": true,
+      "titleIncludes": "Rust",
+      "scheduleCron": "0 9 * * 1",
+      "goals": 0,
+      "schedules": 0
+    }
+  },
+  "script": {
+    "turns": [
+      {
+        "text": [
+          "{\"title\": \"Learn Rust\", \"brief\": \"Work through the Rust book a chapter a week, with an exercise for each.\", \"schedule\": {\"cron\": \"0 9 * * 1\", \"prompt\": \"Pick the next chapter and set an exercise.\"}}"
+        ]
+      }
+    ]
+  },
+  "expect": []
+}
