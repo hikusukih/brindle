@@ -4,7 +4,8 @@ import { goals, schedules } from "../db/schema.js";
 import { firesTooOften, type Scheduler } from "../scheduler.js";
 import type { Tool } from "./registry.js";
 
-const maxPerGoal = 10;
+// Settled by the user (docs/decisions.md): at most 5 schedules per goal; the 15-minute floor is in cronProblem.
+export const maxPerGoal = 5;
 
 /** Why a cron expression can't be proposed (it doesn't parse, or fires more often than every 15 minutes), or null. */
 export function cronProblem(scheduler: Scheduler, cron: string): string | null {
