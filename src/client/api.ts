@@ -10,6 +10,8 @@ export type Channel = {
   model: string | null;
   /** The goal that owns this channel, or null for an ordinary one. Its rename, archive and delete go through the goal. */
   goalId: string | null;
+  /** JSON about a channel made by "New channel from here"; null otherwise. */
+  branch?: string | null;
 };
 
 export type RunEvent = { id: string; runId: string; seq: number; type: string; data: string; createdAt: string };
