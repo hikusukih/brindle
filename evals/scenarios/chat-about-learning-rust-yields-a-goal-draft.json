@@ -1,0 +1,41 @@
+{
+  "name": "chat-about-learning-rust-yields-a-goal-draft",
+  "description": "A chat about learning Rust ends with a drafted goal; nothing exists until the user approves the card.",
+  "proposeGoal": true,
+  "messages": [
+    "I want to learn Rust properly over the next few months, an hour on weekday evenings. Can you keep me on track?"
+  ],
+  "script": {
+    "turns": [
+      {
+        "toolCalls": [
+          {
+            "id": "c1",
+            "name": "propose_goal",
+            "arguments": {
+              "title": "Learn Rust",
+              "brief": "Work through the Rust book at about an hour on weekday evenings. Success is finishing it and building one small command-line tool.",
+              "schedule": {
+                "cron": "0 19 * * 1-5",
+                "prompt": "Give me tonight's Rust lesson and record my progress."
+              }
+            }
+          }
+        ]
+      },
+      {
+        "text": ["I proposed a goal with a weekday evening lesson. Approve it to create it."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "approvals": ["approve"],
+      "goals": 1,
+      "schedules": 1,
+      "crons": ["0 19 * * 1-5"],
+      "eventTypes": ["message", "tool_call", "approval_request", "approval_decision", "tool_result", "text"]
+    }
+  ]
+}
