@@ -109,6 +109,69 @@ describe("a goal's channel", () => {
     ...extra,
   });
 
+  it("offers New channel from here on a finished run and opens the new channel", async () => {
+    let body: unknown;
+    const run = {
+      id: "r1",
+      channelId: "c1",
+      status: "done",
+      stopReason: null,
+      startedAt: stamp,
+      endedAt: stamp,
+      events: [],
+    };
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([run]),
+      "/api/channels/c1/branch": (_method, b) => {
+        body = b;
+        return Response.json({ ...channel("c2", "From Plans"), branch: null }, { status: 201 });
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "New channel from here" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/channels/c2"));
+    expect(body).toEqual({ runId: "r1" });
+  });
+
+  it("shows that the seed is being written and does not branch twice on a second tap", async () => {
+    let posts = 0;
+    let finish: (r: Response) => void = () => {};
+    const pending = new Promise<Response>((resolve) => {
+      finish = resolve;
+    });
+    const run = {
+      id: "r1",
+      channelId: "c1",
+      status: "done",
+      stopReason: null,
+      startedAt: stamp,
+      endedAt: stamp,
+      events: [],
+    };
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () => Response.json([run]),
+      "/api/channels/c1/branch": () => {
+        posts++;
+        return pending as unknown as Response; // the stub resolves whatever it is given
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    render(<ChannelsScreen />);
+    const button = await screen.findByRole("button", { name: "New channel from here" });
+    fireEvent.click(button);
+    expect(await screen.findByText(/Writing the new channel's summary/)).toBeTruthy();
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.click(button);
+    expect(posts).toBe(1);
+    finish(Response.json({ ...channel("c2", "From Plans"), branch: null }, { status: 201 }));
+    await waitFor(() => expect(window.location.hash).toBe("#/channels/c2"));
+  });
+
   it("pins the goal's brief at the top of the channel", async () => {
     stubFetch(goalRoutes());
     window.location.hash = "#/channels/g1";
@@ -333,6 +396,69 @@ describe("channel view", () => {
     await waitFor(() => expect(calls).toContain("POST /api/runs/r1/approvals/k1"));
   });
 
+  it("shows a proposed goal's fields on its card and sends only what the user changed", async () => {
+    window.location.hash = "#/channels/c1";
+    let sent: unknown;
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("waiting", null, [
+            event(1, "message", { text: "keep me on track" }),
+            event(2, "approval_request", {
+              callId: "k1",
+              tool: "propose_goal",
+              editable: true,
+              reason: 'Create the goal "Learn Rust"',
+              arguments: {
+                title: "Learn Rust",
+                brief: "Read the book.",
+                schedule: { cron: "0 19 * * 1-5", prompt: "Lesson." },
+              },
+            }),
+          ]),
+        ]),
+      "/api/runs/r1/approvals/k1": (_m, body) => {
+        sent = body;
+        return Response.json({});
+      },
+    });
+    render(<ChannelsScreen />);
+    const brief = (await screen.findByLabelText("Brief")) as HTMLTextAreaElement;
+    expect(brief.value).toBe("Read the book.");
+    expect((screen.getByLabelText("Title") as HTMLInputElement).value).toBe("Learn Rust");
+    fireEvent.change(brief, { target: { value: "Finish chapters 1 to 5." } });
+    fireEvent.click(screen.getByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(sent).toEqual({ decision: "approve", edits: { brief: "Finish chapters 1 to 5." } }));
+  });
+
+  it("approves an unchanged goal card without edits", async () => {
+    window.location.hash = "#/channels/c1";
+    let sent: unknown;
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("waiting", null, [
+            event(1, "approval_request", {
+              callId: "k1",
+              tool: "propose_goal",
+              editable: true,
+              reason: "Create the goal",
+              arguments: { title: "Learn Rust", brief: "Read the book." },
+            }),
+          ]),
+        ]),
+      "/api/runs/r1/approvals/k1": (_m, body) => {
+        sent = body;
+        return Response.json({});
+      },
+    });
+    render(<ChannelsScreen />);
+    fireEvent.click(await screen.findByRole("button", { name: "Approve" }));
+    await waitFor(() => expect(sent).toEqual({ decision: "approve" }));
+  });
+
   it("shows a settled approval as answered, without buttons", async () => {
     window.location.hash = "#/channels/c1";
     stubFetch({
@@ -350,6 +476,29 @@ describe("channel view", () => {
     expect(screen.queryByRole("button", { name: "Approve" })).toBeNull();
   });
 
+  it("shows the values the user approved, not the model's draft, on a decided card", async () => {
+    window.location.hash = "#/channels/c1";
+    stubFetch({
+      "/api/channels": () => Response.json([channel("c1", "Plans")]),
+      "/api/channels/c1/runs": () =>
+        Response.json([
+          run("done", null, [
+            event(1, "approval_request", {
+              callId: "k1",
+              tool: "send_email",
+              reason: "Send it",
+              arguments: { note: "model draft" },
+            }),
+            event(2, "approval_decision", { callId: "k1", decision: "approve", arguments: { note: "user version" } }),
+          ]),
+        ]),
+    });
+    render(<ChannelsScreen />);
+    expect(await screen.findByText("Approved.")).toBeTruthy();
+    expect(document.body.textContent).toContain("user version");
+    expect(document.body.textContent).not.toContain("model draft");
+  });
+
   const twoModels = {
     default: "openai:gpt-test",
     models: [
@@ -364,11 +513,22 @@ describe("channel view", () => {
       "/api/models": () => Response.json(twoModels),
       "/api/channels": () => Response.json([channel("c1", "Plans")]),
       "/api/channels/c1/runs": () => Response.json([]),
+      "/api/channels/c1/model-settings": () =>
+        Response.json({
+          model: "openai:gpt-test",
+          contextWindow: 8192,
+          maxSteps: 10,
+          maxTokens: 100000,
+          maxMillis: 300000,
+        }),
       "/api/channels/c1/model": (_m, body) =>
         Response.json({ ...channel("c1", "Plans"), model: (body as { model: string | null }).model }),
     });
     render(<ChannelsScreen />);
     expect(await screen.findByText("Model: openai:gpt-test (default)")).toBeTruthy();
+    expect(
+      await screen.findByText(/Window 8,192 tokens · up to 10 steps, 100,000 tokens and 5 min per run/),
+    ).toBeTruthy();
     expect(screen.queryByRole("textbox", { name: "Model for this channel" })).toBeNull();
 
     fireEvent.change(await screen.findByLabelText("Model for this channel"), {

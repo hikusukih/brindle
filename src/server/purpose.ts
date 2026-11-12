@@ -104,6 +104,29 @@ export class PurposeDrafter {
     }
   }
 
+  /** A draft from a branch's seed summary, since the new channel has no exchanges of its own yet. Saved like any draft. */
+  async draftFromSeed(channelId: string, seed: string): Promise<ScopeStatement> {
+    const { model, millis } = this.housekeeping(channelId);
+    const text = (
+      await housekeepingCall(
+        model,
+        instructions,
+        `Summary of the conversation this channel continues:\n\n${seed}`,
+        millis,
+      )
+    )
+      .slice(0, maxChars)
+      .trim();
+    if (!text) throw new Error("The model drafted nothing.");
+    return writeStatement(this.db, {
+      scopeKind: "channel",
+      scopeId: channelId,
+      text,
+      author: "agent",
+      confirmed: false,
+    });
+  }
+
   /** A fresh draft, also when the user asks for one; refuses to run with nothing to describe. Appends a version, so it can be restored. */
   async draft(channelId: string): Promise<ScopeStatement> {
     const material = exchanges(this.db, channelId, runsBeforeDraft);
