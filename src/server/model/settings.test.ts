@@ -166,3 +166,25 @@ describe("editing model settings", () => {
     expect(store.entry("openai:local")).toEqual({ maxSteps: 4 });
   });
 });
+
+describe("a per-model limit on scheduled runs in the settings file", () => {
+  it("is unset by default and read as a positive whole number when set", () => {
+    expect(defaultModelSettings.maxScheduledRuns).toBeUndefined();
+    const settings = loadModelSettings("/x", file({ "openai:large": { maxScheduledRuns: 1 } }));
+    const store = new ModelSettingsStore(settings, () => "openai:large");
+    expect(store.forSpec(null).maxScheduledRuns).toBe(1);
+    expect(new ModelSettingsStore({}).forSpec("openai:small").maxScheduledRuns).toBeUndefined();
+    expect(() => loadModelSettings("/x", file({ "openai:large": { maxScheduledRuns: 0 } }))).toThrow(
+      /maxScheduledRuns must be a positive whole number/,
+    );
+  });
+
+  it("can be set and cleared like the other numbers", async () => {
+    const store = new ModelSettingsStore({}, () => "openai:large");
+    const write = () => {};
+    await updateModelSettings(store, "/x", "openai:large", { maxScheduledRuns: 2 }, { write });
+    expect(store.entry("openai:large")).toEqual({ maxScheduledRuns: 2 });
+    await updateModelSettings(store, "/x", "openai:large", { maxScheduledRuns: null }, { write });
+    expect(store.entry("openai:large")).toEqual({});
+  });
+});

@@ -14,6 +14,11 @@ export type ModelSettings = {
   housekeepingMillis: number;
   /** Whether to send the new prompt after a fold so the next message reads only itself. */
   warmCache: boolean;
+  /**
+   * Scheduled runs on this model at once, checked alongside the scheduler's overall cap. Unset by default: then only
+   * the overall cap holds it (docs/decisions.md).
+   */
+  maxScheduledRuns?: number;
 };
 
 /** Starting guesses from docs/design/context.md, chosen for a CPU-only llama.cpp host. */
@@ -34,7 +39,10 @@ const numeric = [
   "maxTokens",
   "maxMillis",
   "housekeepingMillis",
+  "maxScheduledRuns",
 ] as const satisfies readonly (keyof ModelSettings)[];
+
+const known: readonly string[] = [...numeric, "warmCache"];
 
 /** Checks one model's entry, naming `where` (the file) in any error. Unknown keys and bad values throw. */
 export function parseSettings(where: string, spec: string, raw: unknown): Partial<ModelSettings> {
@@ -206,8 +214,7 @@ export async function updateModelSettings(
   const given = Object.fromEntries(Object.entries(patch).filter(([, v]) => v !== null));
   const next: Record<string, unknown> = { ...store.entry(spec), ...parseSettings("The settings", spec, given) };
   for (const key of cleared) {
-    if (!Object.hasOwn(defaultModelSettings, key))
-      throw new ModelSettingsError(`The settings: "${spec}" has an unknown setting "${key}".`);
+    if (!known.includes(key)) throw new ModelSettingsError(`The settings: "${spec}" has an unknown setting "${key}".`);
     delete next[key];
   }
   let server = store.serverWindow(spec);
