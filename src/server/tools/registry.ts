@@ -15,6 +15,9 @@ export type ToolContext = {
   emit: (type: "artifact", data: Record<string, unknown>) => void;
 };
 
+/** Text the model did not write: what the user wrote in this scope, and the results of this run's earlier tool calls. */
+export type KnownText = { userText: string; earlierResults: string };
+
 export type Tool = {
   name: string;
   description: string;
@@ -33,6 +36,11 @@ export type Tool = {
     args: Record<string, unknown>,
     edits: Record<string, unknown>,
   ) => { args: Record<string, unknown> } | { error: string };
+  /**
+   * For a `read` or `local` tool whose arguments can carry data out, such as a URL the model wrote: true puts this call
+   * to the user on an approval card anyway. `known` is the text a value may safely be copied from.
+   */
+  askWhen?: (args: Record<string, unknown>, known: KnownText) => boolean;
   /** One line for the approval card, derived from the arguments. */
   describeCall?: (args: Record<string, unknown>) => string;
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>;
@@ -69,8 +77,14 @@ export class ToolRegistry {
  * Whether a call must wait for the user. One function so a goal's standing permission (Phase 4) can
  * later answer false for a tool without the run loop changing.
  */
-export function needsApproval(tool: Tool, _call: ToolCall, _scope: ToolContext["scope"]): boolean {
-  return tool.effect === "external";
+export function needsApproval(
+  tool: Tool,
+  call: ToolCall,
+  _scope: ToolContext["scope"],
+  // With nothing known, nothing can be shown to come from outside the model, so a tool that asks will ask.
+  known: KnownText = { userText: "", earlierResults: "" },
+): boolean {
+  return tool.effect === "external" || tool.askWhen?.(call.arguments, known) === true;
 }
 
 type Schema = {

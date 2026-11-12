@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import { type Tool, ToolRegistry, validateArguments } from "./registry.js";
+import { needsApproval, type Tool, ToolRegistry, validateArguments } from "./registry.js";
 import { globalMaxResultTokens, sizeResult } from "./sizing.js";
-import { htmlToText, webFetchTool, webSearchTool } from "./web.js";
+import { composedUrl, htmlToText, webFetchTool, webSearchTool } from "./web.js";
 
 const ctx = {
   runId: "r",
@@ -147,5 +147,44 @@ describe("web_search", () => {
     await expect(down.execute({ query: "x" }, ctx)).rejects.toThrow(/502/);
     const odd = webSearchTool("https://search.example.com", { fetch: async () => Response.json({ nope: 1 }) });
     await expect(odd.execute({ query: "x" }, ctx)).rejects.toThrow(/isn't search results/);
+  });
+});
+
+describe("a URL the model composed", () => {
+  const known = (userText: string, earlierResults = "") => ({ userText, earlierResults });
+
+  it("is not composed when the user wrote it, with the scheme and host compared without case", () => {
+    expect(composedUrl("https://example.com/a?b=1", known("see HTTPS://Example.COM/a?b=1"))).toBe(false);
+    expect(composedUrl("https://example.com/", known("go to https://example.com"))).toBe(false);
+  });
+
+  it("is not composed when it ends a sentence or sits in brackets in the user's text", () => {
+    expect(composedUrl("https://example.com/a", known("Read https://example.com/a."))).toBe(false);
+    expect(composedUrl("https://example.com/a", known("(see https://example.com/a)"))).toBe(false);
+  });
+
+  it("is not composed when an earlier tool result of the run holds it", () => {
+    expect(composedUrl("https://example.com/b", known("", "Result: https://example.com/b"))).toBe(false);
+  });
+
+  it("is composed when the path, query or anything past the host differs", () => {
+    expect(composedUrl("https://example.com/A", known("https://example.com/a"))).toBe(true);
+    expect(composedUrl("https://example.com/a?leak=hello", known("https://example.com/a"))).toBe(true);
+    expect(composedUrl("https://collector.example.net/x", known(""))).toBe(true);
+  });
+
+  it("is not a card at all when it isn't an http(s) URL, since nothing is fetched", () => {
+    expect(composedUrl("not a url", known(""))).toBe(false);
+    expect(composedUrl("file:///etc/hosts", known(""))).toBe(false);
+  });
+
+  it("makes web_fetch ask through needsApproval, and only then", () => {
+    const tool = webFetchTool({});
+    const c = { id: "c", name: "web_fetch", arguments: { url: "https://example.com/x" } };
+    const scope = { kind: "channel", id: "ch" } as const;
+    expect(needsApproval(tool, c, scope, known("https://example.com/x"))).toBe(false);
+    expect(needsApproval(tool, c, scope, known("nothing"))).toBe(true);
+    // With nothing known, a tool that asks will ask.
+    expect(needsApproval(tool, c, scope)).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { asc, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 import { getChannel } from "./channels.js";
 import { defaultHousekeepingMillis, foldIfNeeded, historyShare, latestSummary, modelSummarizer } from "./compaction.js";
 import {
@@ -17,7 +17,7 @@ import { events, runs } from "./db/schema.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall } from "./model/adapter.js";
 import { scopeStatementFor } from "./scope-statements.js";
 import { describeToday } from "./time-zone.js";
-import { needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
+import { type KnownText, needsApproval, ToolRegistry, validateArguments } from "./tools/registry.js";
 import { estimateTokens, sizeResult } from "./tools/sizing.js";
 
 export type Run = typeof runs.$inferSelect;
@@ -479,6 +479,12 @@ export class RunEngine {
           }
         }
 
+        // Read once per step, and only if a tool asks: the text a call's arguments may be copied from without a card.
+        let knownText: KnownText | undefined;
+        const known = () => {
+          knownText ??= this.knownText(channelId, runId);
+          return knownText;
+        };
         // Every external call is put to the user before any of them runs, so the cards appear together.
         const checked = calls.map((call) => {
           const tool = this.tools.get(call.name);
@@ -488,7 +494,7 @@ export class RunEngine {
           // A precheck refusal is not a bad argument (an archived goal, a full cap), so it speaks for itself.
           const refused = tool.precheck?.(call.arguments, { scope });
           if (refused) return { call, tool, problem: refused };
-          return { call, tool, ask: needsApproval(tool, call, scope) };
+          return { call, tool, ask: needsApproval(tool, call, scope, known()) };
         });
         for (const { call, tool, ask } of checked) {
           if (!tool || !ask || requested.has(call.id)) continue;
@@ -595,6 +601,39 @@ export class RunEngine {
 
   private setStatus(runId: string, status: Run["status"]) {
     this.db.update(runs).set({ status }).where(eq(runs.id, runId)).run();
+  }
+
+  /** What the user wrote in this channel, every run of it, and this run's tool results so far. */
+  private knownText(channelId: string, runId: string): KnownText {
+    const ids = this.db.select({ id: runs.id }).from(runs).where(eq(runs.channelId, channelId)).all();
+    const rows = ids.length
+      ? this.db
+          .select()
+          .from(events)
+          .where(
+            and(
+              inArray(
+                events.runId,
+                ids.map((r) => r.id),
+              ),
+              inArray(events.type, ["message", "tool_result"]),
+            ),
+          )
+          .orderBy(asc(events.seq))
+          .all()
+      : [];
+    const text = (e: (typeof rows)[number], key: string) =>
+      String((JSON.parse(e.data) as Record<string, unknown>)[key] ?? "");
+    return {
+      userText: rows
+        .filter((e) => e.type === "message")
+        .map((e) => text(e, "text"))
+        .join("\n"),
+      earlierResults: rows
+        .filter((e) => e.type === "tool_result" && e.runId === runId)
+        .map((e) => text(e, "result"))
+        .join("\n"),
+    };
   }
 
   private stopForLimit(runId: string, reason: string) {
