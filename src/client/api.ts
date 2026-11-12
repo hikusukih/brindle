@@ -85,6 +85,9 @@ export type Artifact = {
   createdAt: string;
   /** True while the channel that made it still exists. */
   scopeLive: boolean;
+  /** Set when the entry is a goal's state document rather than a stored file: the goal whose state page to open. */
+  stateOfGoal?: string;
+  version?: number;
 };
 
 export type ModelInfo = { spec: string; provider: "openai" | "anthropic" | "scripted"; keyPresent: boolean };

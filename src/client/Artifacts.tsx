@@ -6,6 +6,12 @@ const scopes = ["channel", "goal"] as const;
 const select = "min-h-11 rounded-lg border border-slate-300 px-3 text-sm";
 
 function Source({ a }: { a: Artifact }) {
+  if (a.stateOfGoal)
+    return (
+      <>
+        the working memory of goal {a.scopeName}, version {a.version}
+      </>
+    );
   if (a.scope === "goal") return <>from a goal</>;
   if (!a.scopeLive) return <>from deleted channel {a.scopeName}</>;
   return (
@@ -166,7 +172,17 @@ export function ArtifactsScreen({ empty }: { empty: { title: string; body: strin
             <div className="text-sm text-slate-600">
               {a.kind} · {new Date(a.createdAt).toLocaleString()} · <Source a={a} />
             </div>
-            <OpenArtifact a={a} />
+            {a.stateOfGoal ? (
+              // Not a file to fetch: the state page always shows the latest version, with its history.
+              <a
+                href={`#/goals/${encodeURIComponent(a.stateOfGoal)}/state`}
+                className="mt-2 inline-flex min-h-11 items-center rounded-lg border border-slate-300 px-3 text-sm font-medium"
+              >
+                Open
+              </a>
+            ) : (
+              <OpenArtifact a={a} />
+            )}
           </li>
         ))}
       </ul>
