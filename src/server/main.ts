@@ -21,6 +21,7 @@ import {
   updateModelSettings,
 } from "./model/settings.js";
 import { PurposeDrafter } from "./purpose.js";
+import { reportRunEnded } from "./reports.js";
 import { defaultLimits, RunEngine, type RunLimits } from "./runs.js";
 import { getSetting } from "./settings.js";
 import { getTimeZone } from "./time-zone.js";
@@ -125,6 +126,7 @@ const goalDrafter = new GoalDrafter(() => ({
   millis: 10 * 60_000,
 }));
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
+engine.onRunEnded = (runId) => reportRunEnded(db, runId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);
