@@ -14,6 +14,7 @@ import {
 } from "./context.js";
 import type { Db } from "./db/index.js";
 import { events, goals, runs } from "./db/schema.js";
+import { goalStateForChannel } from "./goal-state.js";
 import { type Message, type ModelAdapter, ModelError, type ToolCall, type Usage } from "./model/adapter.js";
 import type { SchedulerHooks } from "./scheduler.js";
 import { scopeStatementFor } from "./scope-statements.js";
@@ -572,6 +573,8 @@ export class RunEngine {
               window: limits.contextWindow,
               toolTokens: tools ? estimateTokens(JSON.stringify(tools)) : 0,
               scopeStatement: scopeStatementFor(this.db, channelId),
+              // Read at every step, so a step after update_goal_state sees what it wrote.
+              goalState: goalStateForChannel(this.db, channelId),
               model: limits.model ?? "default",
               toolSet: fingerprint(tools ?? []),
               previous: previousRequest(this.db, channelId),

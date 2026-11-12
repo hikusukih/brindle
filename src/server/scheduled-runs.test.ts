@@ -1,8 +1,10 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 import { createChannel } from "./channels.js";
+import { runContext } from "./context.js";
 import { openDatabase } from "./db/index.js";
 import { events, runs } from "./db/schema.js";
+import { saveUserState } from "./goal-state.js";
 import { createGoal } from "./goals.js";
 import { type ModelAdapter, ModelError, type ModelEvent, type ModelRequest } from "./model/adapter.js";
 import { listReports, reportRunEnded } from "./reports.js";
@@ -112,6 +114,29 @@ describe("scheduled runs", () => {
       .orderBy(events.seq)
       .get();
     expect(first).toMatchObject({ type: "message", data: JSON.stringify({ text: "Write today's brief." }) });
+  });
+
+  it("every goal run carries the goal's current state: scheduled, the user's in its channel, and no other channel's", async () => {
+    const { db, model, engine, scheduler, goal, startedRuns } = setup();
+    const g = goal("Learn Rust", "Teach the next lesson.");
+    saveUserState(db, g.id, { text: "Chapter 3 is next." });
+    const carried = (i: number) =>
+      model.requests[i]?.messages.find((m) => m.content.includes("state document"))?.content;
+
+    scheduler.tick(due);
+    const [runId] = startedRuns();
+    await engine.whenSettled(runId as string);
+    expect(carried(0)).toMatch(/version 1[\s\S]*Chapter 3 is next\./);
+
+    saveUserState(db, g.id, { text: "Chapter 4 is next.", baseVersion: 1 });
+    const mine = engine.start(g.channelId, "Where am I?");
+    await engine.whenSettled(mine.id);
+    expect(carried(1)).toMatch(/version 2[\s\S]*Chapter 4 is next\./);
+    expect(runContext(db, mine.id)[0]?.report.goalStateVersion).toBe(2);
+
+    const other = engine.start(createChannel(db, "Plain").id, "hello");
+    await engine.whenSettled(other.id);
+    expect(carried(2)).toBeUndefined();
   });
 
   it("tools in a scheduled run see the goal as the scope; tools in the user's runs see the channel", async () => {

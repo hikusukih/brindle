@@ -164,6 +164,14 @@ export function applyAgentUpdate(db: Db, goalId: string, update: AgentUpdate, no
   }
 }
 
+/** The state a goal run's context carries: the goal whose channel this is, archived or not; undefined elsewhere. */
+export function goalStateForChannel(db: Db, channelId: string): { version: number; text: string } | undefined {
+  const goal = db.select({ id: goals.id }).from(goals).where(eq(goals.channelId, channelId)).get();
+  if (!goal) return undefined;
+  const state = currentState(db, goal.id);
+  return { version: state?.version ?? 0, text: state?.text ?? "" };
+}
+
 /** What a tool may do with state, so it never holds the database. */
 export type GoalStateAccess = {
   /** The goal a run's tools act on: the scope's own goal for a scheduled run, else the goal whose channel it is. */
