@@ -23,6 +23,18 @@ const report: string[] = [];
 
 const adapter = () => new OpenAiAdapter({ baseUrl, model: "boundary" });
 const onlyFake = fake ? it : it.skip;
+/**
+ * BRINDLE_BOUNDARY_TINY=1 says the server runs a tiny model, as CI's real-server job does (P2.12): real tokenization,
+ * length rejections and cache reuse still hold, but a model of a few hundred megabytes can't be relied on to make a
+ * tool call, so that case is skipped against it, with the reason in the report.
+ */
+const tiny = process.env.BRINDLE_BOUNDARY_TINY === "1";
+const skipped: string[] = [];
+const unlessTiny = (reason: string) => {
+  if (!tiny) return it;
+  skipped.push(reason);
+  return it.skip;
+};
 
 async function collect(stream: AsyncIterable<ModelEvent>) {
   const events: ModelEvent[] = [];
@@ -46,7 +58,7 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await fake?.stop();
-  if (realUrl) console.log(`Boundary report for ${realUrl}\n${report.join("\n")}`);
+  if (realUrl) console.log(`Boundary report for ${realUrl}\n${[...report, ...skipped].join("\n")}`);
 });
 
 describe("model boundary", () => {
@@ -101,35 +113,38 @@ describe("model boundary", () => {
     );
   });
 
-  it("round-trips a streamed tool call", async () => {
-    const tools = [
-      {
-        name: "lookup",
-        description: "Look something up.",
-        parameters: { type: "object", properties: { query: { type: "string" } } },
-      },
-    ];
-    const first = await collect(
-      adapter().stream({ messages: [{ role: "user", content: "Please call the tool for zebra." }], tools }),
-    );
-    const call = first.find((e) => e.type === "tool_call");
-    expect(call?.type === "tool_call" && call.call.name).toBe("lookup");
-    expect(call?.type === "tool_call" && call.call.arguments).toEqual({ query: "zebra" });
-    expect(first.at(-1)).toMatchObject({ type: "done", stop: "tool_use" });
-    if (call?.type !== "tool_call") return;
-    const second = await collect(
-      adapter().stream({
-        messages: [
-          { role: "user", content: "Please call the tool for zebra." },
-          { role: "assistant", content: "", toolCalls: [call.call] },
-          { role: "tool", toolCallId: call.call.id, content: "Zebras are striped." },
-        ],
-        tools,
-      }),
-    );
-    expect(second.some((e) => e.type === "text")).toBe(true);
-    expect(second.at(-1)).toMatchObject({ type: "done", stop: "end" });
-  });
+  unlessTiny("tool call: skipped, a tiny model can't be relied on to call a tool")(
+    "round-trips a streamed tool call",
+    async () => {
+      const tools = [
+        {
+          name: "lookup",
+          description: "Look something up.",
+          parameters: { type: "object", properties: { query: { type: "string" } } },
+        },
+      ];
+      const first = await collect(
+        adapter().stream({ messages: [{ role: "user", content: "Please call the tool for zebra." }], tools }),
+      );
+      const call = first.find((e) => e.type === "tool_call");
+      expect(call?.type === "tool_call" && call.call.name).toBe("lookup");
+      expect(call?.type === "tool_call" && call.call.arguments).toEqual({ query: "zebra" });
+      expect(first.at(-1)).toMatchObject({ type: "done", stop: "tool_use" });
+      if (call?.type !== "tool_call") return;
+      const second = await collect(
+        adapter().stream({
+          messages: [
+            { role: "user", content: "Please call the tool for zebra." },
+            { role: "assistant", content: "", toolCalls: [call.call] },
+            { role: "tool", toolCallId: call.call.id, content: "Zebras are striped." },
+          ],
+          tools,
+        }),
+      );
+      expect(second.some((e) => e.type === "text")).toBe(true);
+      expect(second.at(-1)).toMatchObject({ type: "done", stop: "end" });
+    },
+  );
 
   it("sends a follow-up that extends the previous request, which the server reads from its cache", async () => {
     const { db, engine, channel } = engineFor(nCtx);

@@ -11,14 +11,12 @@ jobs:
   discover:
     runs-on: ubuntu-latest
     steps:
-      - name: Latest llama.cpp release and its Linux assets
+      - name: Recent llama.cpp releases and every asset of the latest
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view --repo ggml-org/llama.cpp --json tagName,assets --jq '.tagName, (.assets[].name | select(test("ubuntu")))'
-      - name: Candidate tiny models
+          gh release list --repo ggml-org/llama.cpp --limit 5
+          gh release view --repo ggml-org/llama.cpp --json tagName,assets --jq '.tagName, (.assets[] | "\(.name) \(.size) \(.digest)")'
+      - name: The model file's checksum at the pinned revision
         run: |
-          for repo in bartowski/SmolLM2-135M-Instruct-GGUF HuggingFaceTB/SmolLM2-135M-Instruct-GGUF Qwen/Qwen2.5-0.5B-Instruct-GGUF; do
-            echo "== $repo"
-            curl -sS "https://huggingface.co/api/models/$repo" | jq -r '.sha, (.siblings[].rfilename | select(test("(?i)q8_0|q4_k_m")))' || true
-          done
+          curl -sS "https://huggingface.co/api/models/bartowski/SmolLM2-135M-Instruct-GGUF/tree/09816acd5d99df7be770d85ea30822623dab342c" | jq -r '.[] | select(.path | test("Q8_0|Q4_K_M")) | "\(.path) \(.size) \(.lfs.oid)"'
