@@ -10,7 +10,7 @@ import { openDatabase } from "./db/index.js";
 import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
-import { modelRegistry } from "./model/config.js";
+import { modelRegistry, supported } from "./model/config.js";
 import {
   applyServerWindows,
   describeModelSettings,
@@ -43,7 +43,12 @@ if (token.generated) {
 // Resolves to the package root from both src/server and dist/server.
 const builtClient = fileURLToPath(new URL("../../dist/client", import.meta.url));
 // With no default model and none chosen for a channel, starting a run answers 503.
-const models = modelRegistry(process.env);
+// The non-secret model file names models too, so a model can be added there without touching the environment.
+const modelFile = loadModelSettings(join(dataDir, "model-settings.json"));
+for (const spec of Object.keys(modelFile))
+  if (!supported(spec))
+    console.warn(`model-settings.json names "${spec}", which is not a supported model; ignoring it.`);
+const models = modelRegistry(process.env, undefined, Object.keys(modelFile));
 // The default the user chose in Settings, unless that model is no longer configured.
 const chosenDefault = getSetting(db, "default_model");
 if (chosenDefault) {
@@ -57,7 +62,7 @@ if (chosenDefault) {
 }
 // Per-model window and limits; a local server's own window is asked for once, now, so a mismatch fails at startup.
 const settings = new ModelSettingsStore(
-  loadModelSettings(join(dataDir, "model-settings.json")),
+  modelFile,
   () => models.defaultSpec,
   (spec) => models.list().some((m) => m.spec === spec),
 );
@@ -73,7 +78,7 @@ const limitsFor = (spec: string | null): RunLimits => {
   return { ...defaultLimits, ...s };
 };
 const artifacts = new ArtifactStore(db, join(dataDir, "artifacts"));
-const tools = builtInTools(process.env, artifacts);
+const tools = builtInTools(process.env, artifacts, db);
 // Plug-in tools from <data>/mcp.json, each with an effect level the user assigned.
 const mcpClients = await connectMcpServers(loadMcpConfig(join(dataDir, "mcp.json")), tools);
 for (const signal of ["SIGINT", "SIGTERM"] as const) {

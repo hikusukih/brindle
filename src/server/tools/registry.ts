@@ -25,6 +25,14 @@ export type Tool = {
   maxResultTokens?: number;
   /** Checks the arguments beyond their shape, so a bad call is sent back to the model before any approval card is shown. Returns the full message the model is shown (starting "Error:"), or null. */
   precheck?: (args: Record<string, unknown>, ctx: { scope: ToolContext["scope"] }) => string | null;
+  /**
+   * Lets the user change the arguments on the approval card before approving. Gets the call's arguments and the edits the
+   * user sent, and returns the arguments to run with, checked as `precheck` checks, or an error message to show them.
+   */
+  revise?: (
+    args: Record<string, unknown>,
+    edits: Record<string, unknown>,
+  ) => { args: Record<string, unknown> } | { error: string };
   /** One line for the approval card, derived from the arguments. */
   describeCall?: (args: Record<string, unknown>) => string;
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>;
