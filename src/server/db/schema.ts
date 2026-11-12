@@ -175,3 +175,24 @@ export const contextReports = sqliteTable(
     index("context_reports_run_idx").on(t.runId, t.step),
   ],
 );
+
+// Compaction output (docs/design/context.md): append-only versions per channel, the highest is current. The runs and
+// events a summary covers are never touched.
+export const summaries = sqliteTable(
+  "summaries",
+  {
+    id: text("id").primaryKey(),
+    channelId: text("channel_id")
+      .notNull()
+      .references(() => channels.id, { onDelete: "cascade" }),
+    version: integer("version").notNull(),
+    // The last run folded into this summary; null for a summary that covers no runs of this channel.
+    throughRunId: text("through_run_id"),
+    text: text("text").notNull(),
+    // JSON string[] of artifact ids the text refers to.
+    artifacts: text("artifacts").notNull(),
+    tokensUsed: integer("tokens_used").notNull(),
+    createdAt: text("created_at").notNull(),
+  },
+  (t) => [uniqueIndex("summaries_version_idx").on(t.channelId, t.version)],
+);

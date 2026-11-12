@@ -25,6 +25,9 @@ export type ModelRegistry = {
   resolveForChannel(spec: string | null): ModelAdapter;
 };
 
+/** Whether a spec is written in a form `build` understands; a settings-file key that is not is ignored, not offered. */
+export const supported = (spec: string) => spec === "scripted" || /^(openai|anthropic):\S+/.test(spec);
+
 const openAiDefaultBase = "https://api.openai.com/v1";
 
 /**
@@ -36,6 +39,8 @@ const openAiDefaultBase = "https://api.openai.com/v1";
 export function modelRegistry(
   env: Record<string, string | undefined>,
   readFixture: (path: string) => string = (path) => readFileSync(path, "utf8"),
+  /** Specs the non-secret model file names: they are offered like those in BRINDLE_MODELS, so the file alone can add a model. */
+  fileSpecs: string[] = [],
 ): ModelRegistry {
   const cache = new Map<string, ModelAdapter>();
   const value = (name: string) => env[name]?.trim() || undefined;
@@ -87,7 +92,13 @@ export function modelRegistry(
   const envDefault = value("BRINDLE_MODEL");
   if (envDefault) forSpec(envDefault);
   const configured = [
-    ...new Set([envDefault, ...(value("BRINDLE_MODELS")?.split(",") ?? []).map((s) => s.trim())].filter(Boolean)),
+    ...new Set(
+      [
+        envDefault,
+        ...(value("BRINDLE_MODELS")?.split(",") ?? []).map((s) => s.trim()),
+        ...fileSpecs.filter(supported),
+      ].filter(Boolean),
+    ),
   ] as string[];
   let chosenDefault: string | undefined;
   const info = (spec: string): ModelInfo => {

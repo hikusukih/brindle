@@ -356,3 +356,11 @@ export class Scheduler {
     this.db.update(scheduleFires).set({ state, updatedAt: stamp }).where(eq(scheduleFires.id, fireId)).run();
   }
 }
+
+// A schedule that fires more often than this is almost certainly a mistake, and every fire is a model run.
+export const minScheduleGapMillis = 15 * 60_000;
+
+/** True when any two of the given upcoming fires are closer than the floor. The first gap alone can be a long one (":00 and :10" asked at :11), so callers pass several fires. */
+export function firesTooOften(fires: Date[]): boolean {
+  return fires.slice(1).some((d, i) => d.getTime() - (fires[i] as Date).getTime() < minScheduleGapMillis);
+}

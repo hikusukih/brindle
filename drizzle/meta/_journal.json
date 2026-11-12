@@ -61,8 +61,15 @@
     {
       "idx": 8,
       "version": "6",
-      "when": 1793793607172,
-      "tag": "0008_runs_goal_scope_and_trigger",
+      "when": 1793620787560,
+      "tag": "0008_brainy_susan_delgado",
+      "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "6",
+      "when": 1794441628967,
+      "tag": "0009_runs_goal_scope_and_trigger",
       "breakpoints": true
     }
   ]
