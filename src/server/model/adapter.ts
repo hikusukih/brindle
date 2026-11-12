@@ -25,7 +25,13 @@ export type ModelRequest = {
   signal?: AbortSignal;
 };
 
-export type Usage = { inputTokens: number; outputTokens: number };
+export type Usage = {
+  /** Every input token of the request, whether or not the server read it from its cache. */
+  inputTokens: number;
+  outputTokens: number;
+  /** The part of inputTokens the server served from its prompt cache; absent when the server doesn't say. */
+  cachedInputTokens?: number;
+};
 
 export type StopReason = "end" | "tool_use" | "length";
 
