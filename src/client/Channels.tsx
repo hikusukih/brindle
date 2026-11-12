@@ -227,6 +227,26 @@ function parse(e: RunEvent): Record<string, unknown> {
   }
 }
 
+/** The drift nudge: an offer, never an action; nothing is made until the user taps New channel. */
+function NudgeCard(props: { topic: string; busy: boolean; onAccept: () => void; onDismiss: () => void }) {
+  return (
+    <section aria-label="Suggestion" className="flex flex-col gap-2 rounded-lg border border-slate-300 p-3">
+      <p className="text-sm">
+        This conversation seems to have moved on to <strong>{props.topic}</strong>. Start a channel for it? Nothing here
+        is moved.
+      </p>
+      <div className="flex gap-2">
+        <button type="button" className={primary} disabled={props.busy} onClick={props.onAccept}>
+          New channel
+        </button>
+        <button type="button" className={quiet} onClick={props.onDismiss}>
+          Not now
+        </button>
+      </div>
+    </section>
+  );
+}
+
 function EventLine({ event }: { event: RunEvent }) {
   const d = parse(event);
   switch (event.type) {
@@ -244,6 +264,17 @@ function EventLine({ event }: { event: RunEvent }) {
           {String(d.message)}
         </p>
       );
+    case "nudge_answer":
+      // The one line the source keeps after an accepted nudge; a dismissed one leaves nothing behind.
+      return d.answer === "accepted" ? (
+        <p className="text-sm text-slate-600">
+          Continued in{" "}
+          <a className="underline" href={`#/channels/${String(d.channelId)}`}>
+            {String(d.channelName)}
+          </a>
+          .
+        </p>
+      ) : null;
     default:
       return null;
   }
@@ -568,6 +599,13 @@ function ChannelView({ id }: { id: string }) {
   const [target, setTarget] = useState(() => runIdFromHash(window.location.hash));
   const [configured, setConfigured] = useState<ModelInfo[]>([]);
   const source = useRef<AuthedEventSource | null>(null);
+  const later = useRef<ReturnType<typeof setTimeout>[]>([]);
+  useEffect(
+    () => () => {
+      for (const t of later.current) clearTimeout(t);
+    },
+    [],
+  );
 
   useEffect(() => {
     const onChange = () => setTarget(runIdFromHash(window.location.hash));
@@ -633,6 +671,8 @@ function ChannelView({ id }: { id: string }) {
       es.addEventListener("end", () => {
         es.close();
         reload().catch((err: unknown) => setProblem((err as Error).message));
+        // A drift nudge is written by a housekeeping call after the run ends, so look again a little later.
+        for (const wait of [20_000, 90_000]) later.current.push(setTimeout(() => reload().catch(() => {}), wait));
       });
       es.onerror = () => {
         if (es.readyState === AuthedEventSource.CLOSED) {
@@ -698,6 +738,27 @@ function ChannelView({ id }: { id: string }) {
       setProblem((err as Error).message);
     } finally {
       setBranching(false);
+    }
+  };
+
+  const acceptNudge = async (checkId: string) => {
+    if (branching) return;
+    setBranching(true);
+    try {
+      const made = await api<Channel>(`/api/channels/${id}/nudges/${checkId}/accept`, { method: "POST" });
+      window.location.hash = `#/channels/${made.id}`;
+    } catch (err) {
+      setProblem((err as Error).message);
+    } finally {
+      setBranching(false);
+    }
+  };
+  const dismissNudge = async (checkId: string) => {
+    try {
+      await api(`/api/channels/${id}/nudges/${checkId}/dismiss`, { method: "POST" });
+      await reload();
+    } catch (err) {
+      setProblem((err as Error).message);
     }
   };
 
@@ -770,6 +831,20 @@ function ChannelView({ id }: { id: string }) {
                     decision={answer ? String(parse(answer).decision) : null}
                     ended={run.status !== "running" && run.status !== "waiting"}
                     onDecide={(decision, edits) => decide(run.id, String(d.callId), decision, edits)}
+                  />
+                );
+              }
+              if (ev.type === "nudge") {
+                const d = parse(ev);
+                const answered = run.events.some((x) => x.type === "nudge_answer" && parse(x).checkId === d.checkId);
+                if (answered || readOnly) return null;
+                return (
+                  <NudgeCard
+                    key={ev.seq}
+                    topic={String(d.topic)}
+                    busy={branching}
+                    onAccept={() => acceptNudge(String(d.checkId))}
+                    onDismiss={() => dismissNudge(String(d.checkId))}
                   />
                 );
               }

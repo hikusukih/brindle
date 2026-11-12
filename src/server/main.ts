@@ -8,6 +8,7 @@ import { resolveToken } from "./auth.js";
 import { getChannel } from "./channels.js";
 import { modelSummarizer } from "./compaction.js";
 import { openDatabase } from "./db/index.js";
+import { DriftChecker } from "./drift.js";
 import { GoalDrafter } from "./goal-draft.js";
 import { applyLegacyEnv, migrateLegacyDatabase } from "./legacy.js";
 import { connectMcpServers, loadMcpConfig } from "./mcp/index.js";
@@ -113,7 +114,16 @@ const goalDrafter = new GoalDrafter(() => ({
   model: models.resolveForChannel(utilitySpec ?? null),
   millis: 10 * 60_000,
 }));
-engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
+// The drift check uses the same utility model; it runs after drafting, since it needs the purpose statement.
+const drift = new DriftChecker(db, (channelId) => {
+  const spec = utilitySpec ?? getChannel(db, channelId).model;
+  return { model: models.resolveForChannel(spec), millis: settings.forSpec(spec).housekeepingMillis };
+});
+engine.onRunDone = (channelId) =>
+  void purpose
+    .afterRun(channelId)
+    .then(() => drift.afterRun(channelId))
+    .catch(() => {});
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
 if (recovered > 0) console.log(`Marked ${recovered} interrupted run(s) as failed.`);

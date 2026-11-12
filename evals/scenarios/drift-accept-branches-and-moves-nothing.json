@@ -1,0 +1,126 @@
+{
+  "name": "drift-accept-branches-and-moves-nothing",
+  "description": "After the switch to car repairs the nudge appears; accepting it makes a channel named for the topic from the latest run, and the gardening channel keeps every run it had.",
+  "messages": [
+    "Should I plant tomatoes or peppers first?",
+    "How deep do bean seeds go?",
+    "When is the last frost here, roughly?",
+    "Do carrots need full sun?",
+    "My car makes a grinding noise when I brake.",
+    "The brake pedal feels soft too.",
+    "How much does a brake pad change usually cost?",
+    "Can I drive it to the shop safely?",
+    "What does a squeal at low speed mean?",
+    "Should I replace the rotors as well?",
+    "How long do brake pads usually last?",
+    "Is brake fluid something I can top up myself?"
+  ],
+  "drift": {
+    "purpose": "Planning and tending the vegetable garden.",
+    "script": {
+      "turns": [
+        {
+          "text": ["{\"onTopic\": true}"]
+        },
+        {
+          "text": ["{\"onTopic\": false, \"topic\": \"Car repairs\"}"]
+        },
+        {
+          "text": ["{\"onTopic\": false, \"topic\": \"Car repairs\"}"]
+        }
+      ]
+    },
+    "nudges": 1
+  },
+  "script": {
+    "turns": [
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      },
+      {
+        "text": ["Here is what I know."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": false
+    },
+    {
+      "status": "done",
+      "nudgeOpen": true,
+      "answerNudge": "accept"
+    }
+  ]
+}

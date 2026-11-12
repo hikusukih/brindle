@@ -136,6 +136,74 @@ describe("a goal's channel", () => {
     expect(body).toEqual({ runId: "r1" });
   });
 
+  const nudgedRun = (answer?: Record<string, unknown>) => ({
+    id: "r1",
+    channelId: "c1",
+    status: "done",
+    stopReason: null,
+    startedAt: stamp,
+    endedAt: stamp,
+    events: [
+      { id: "e1", runId: "r1", seq: 1, type: "message", data: JSON.stringify({ text: "My car" }), createdAt: stamp },
+      {
+        id: "e2",
+        runId: "r1",
+        seq: 2,
+        type: "nudge",
+        data: JSON.stringify({ checkId: "k1", topic: "Car repairs" }),
+        createdAt: stamp,
+      },
+      ...(answer
+        ? [{ id: "e3", runId: "r1", seq: 3, type: "nudge_answer", data: JSON.stringify(answer), createdAt: stamp }]
+        : []),
+    ],
+  });
+
+  it("shows a drift nudge whose New channel opens a channel for the topic", async () => {
+    let accepted = false;
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Garden")]),
+      "/api/channels/c1/runs": () => Response.json([nudgedRun()]),
+      "/api/channels/c1/nudges/k1/accept": () => {
+        accepted = true;
+        return Response.json({ ...channel("c2", "Car repairs"), branch: null }, { status: 201 });
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    render(<ChannelsScreen />);
+    const card = await screen.findByRole("region", { name: "Suggestion" });
+    expect(card.textContent).toContain("Car repairs");
+    fireEvent.click(within(card).getByRole("button", { name: "New channel" }));
+    await waitFor(() => expect(window.location.hash).toBe("#/channels/c2"));
+    expect(accepted).toBe(true);
+  });
+
+  it("hides the nudge after Not now, and shows the link line once accepted", async () => {
+    let runs = [nudgedRun()];
+    stubFetch({
+      "/api/models": () => Response.json({ default: null, models: [] }),
+      "/api/channels": () => Response.json([channel("c1", "Garden")]),
+      "/api/channels/c1/runs": () => Response.json(runs),
+      "/api/channels/c1/nudges/k1/dismiss": () => {
+        runs = [nudgedRun({ checkId: "k1", answer: "dismissed" })];
+        return Response.json({ dismissed: true });
+      },
+    });
+    window.location.hash = "#/channels/c1";
+    const { unmount } = render(<ChannelsScreen />);
+    const card = await screen.findByRole("region", { name: "Suggestion" });
+    fireEvent.click(within(card).getByRole("button", { name: "Not now" }));
+    await waitFor(() => expect(screen.queryByRole("region", { name: "Suggestion" })).toBeNull());
+    unmount();
+
+    runs = [nudgedRun({ checkId: "k1", answer: "accepted", channelId: "c2", channelName: "Car repairs" })];
+    render(<ChannelsScreen />);
+    const link = await screen.findByRole("link", { name: "Car repairs" });
+    expect(link.getAttribute("href")).toBe("#/channels/c2");
+    expect(screen.queryByRole("region", { name: "Suggestion" })).toBeNull();
+  });
+
   it("shows that the seed is being written and does not branch twice on a second tap", async () => {
     let posts = 0;
     let finish: (r: Response) => void = () => {};
