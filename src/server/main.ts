@@ -103,11 +103,14 @@ const purpose = new PurposeDrafter(db, (channelId) => {
 // Cron is read in the user's zone. Until the app is first opened there is none; UTC stands in, and the first
 // browser's zone moves every schedule through onTimeZoneChange below.
 const scheduler = new Scheduler(db, engine.schedulerHooks(), { timeZone: getTimeZone(db) ?? "UTC" });
-// No channel yet, so the utility model, else the default.
-const goalDrafter = new GoalDrafter(() => ({
-  model: models.resolveForChannel(utilitySpec ?? null),
-  millis: 10 * 60_000,
-}));
+// No channel yet, so the utility model, else the default. The scheduler lets a drafted schedule be checked.
+const goalDrafter = new GoalDrafter(
+  () => ({
+    model: models.resolveForChannel(utilitySpec ?? null),
+    millis: 10 * 60_000,
+  }),
+  scheduler,
+);
 engine.onRunDone = (channelId) => void purpose.afterRun(channelId);
 engine.timeZone = () => getTimeZone(db);
 const recovered = engine.recoverInterrupted();
