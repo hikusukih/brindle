@@ -59,6 +59,24 @@ describe("the API behind the token", () => {
     expect(viaCookie.status).toBe(401);
   });
 
+  // Behind a TLS-terminating proxy or an overlay network's HTTPS name, requests arrive over plain HTTP with these
+  // headers added. Login must neither depend on them nor be fooled by them.
+  it("behaves the same behind a reverse proxy's forwarded headers", async () => {
+    const a = app();
+    const forwarded = {
+      host: "brindle.example.com",
+      "x-forwarded-proto": "https",
+      "x-forwarded-host": "brindle.example.com",
+      "x-forwarded-for": "192.0.2.10",
+      forwarded: "for=192.0.2.10;proto=https;host=brindle.example.com",
+    };
+    const withToken = await a.request("/api/session", {
+      headers: { ...forwarded, authorization: `Bearer ${token}` },
+    });
+    expect(withToken.status).toBe(204);
+    expect((await a.request("/api/session", { headers: forwarded })).status).toBe(401);
+  });
+
   it("the middleware is the only gate: without a hash the app is open, as the other tests use it", async () => {
     const open = createApp({ db: openDatabase(":memory:") });
     expect((await open.request("/api/channels")).status).toBe(200);

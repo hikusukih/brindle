@@ -58,7 +58,7 @@ describe("ArtifactsScreen", () => {
   });
 
   it("opens a document as text with the token in the header, and never as markup", async () => {
-    window.sessionStorage.setItem("brindle-token", "tok");
+    window.localStorage.setItem("brindle-token", "tok");
     const fetchMock = vi.fn(async (url: string) =>
       url.startsWith("/api/artifacts/")
         ? new Response("<h1>Hi</h1><script>alert(1)</script>", { headers: { "content-type": "text/plain" } })
@@ -71,7 +71,7 @@ describe("ArtifactsScreen", () => {
     expect(container.querySelector("script")).toBeNull();
     expect([...container.querySelectorAll("h1")].map((h) => h.textContent)).toEqual(["Artifacts"]);
     expect(fetchMock).toHaveBeenCalledWith("/api/artifacts/a/file", { headers: { authorization: "Bearer tok" } });
-    window.sessionStorage.clear();
+    window.localStorage.clear();
   });
 
   it("offers an HTML page as a download and never puts its markup in the page", async () => {
