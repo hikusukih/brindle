@@ -3,10 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { eq } from "drizzle-orm";
 import { ArtifactStore } from "../src/server/artifacts.js";
+import { branchChannel } from "../src/server/branch.js";
 import { createChannel } from "../src/server/channels.js";
+import { modelSummarizer } from "../src/server/compaction.js";
 import { runContext } from "../src/server/context.js";
 import { openDatabase } from "../src/server/db/index.js";
-import { artifacts, events, goals, schedules, summaries } from "../src/server/db/schema.js";
+import { artifacts, events, goals, runs, schedules, summaries } from "../src/server/db/schema.js";
 import { GoalDrafter } from "../src/server/goal-draft.js";
 import { createGoal } from "../src/server/goals.js";
 import type { McpClient } from "../src/server/mcp/client.js";
@@ -107,6 +109,12 @@ export type Scenario = {
   limits?: Partial<RunLimits>;
   /** Turns on rolling compaction with a scripted utility model (or the live model, in live mode). */
   compaction?: { script: ScriptedFixture };
+  /**
+   * After every message: "New channel from here" on run `fromRun` (1-based) with a utility model that follows `script`,
+   * then `followUp` sent in the new channel. The new channel's last request must contain every `contextIncludes`
+   * string, and the source must still hold every run it had.
+   */
+  branch?: { fromRun: number; script: ScriptedFixture; followUp: string; contextIncludes: string[] };
   tools?: FakeTool[];
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
@@ -325,6 +333,30 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
       if (types.join() !== want.eventTypes.join()) {
         failures.push(`${label}: events were [${types.join(", ")}], expected [${want.eventTypes.join(", ")}]`);
       }
+    }
+  }
+  if (scenario.branch) {
+    const b = scenario.branch;
+    const runsBefore = db.select().from(runs).where(eq(runs.channelId, channel.id)).all();
+    const from = runsBefore.sort((x, y) => x.startedAt.localeCompare(y.startedAt))[b.fromRun - 1];
+    if (!from) failures.push(`branch: run ${b.fromRun} does not exist`);
+    else {
+      const branched = await branchChannel(db, channel.id, from.id, {
+        summarize: modelSummarizer(live ?? new ScriptedModel(b.script)),
+      });
+      const next = engine.start(branched.id, b.followUp);
+      await engine.whenSettled(next.id);
+      const sent = runContext(db, next.id)
+        .filter((c) => c.messages)
+        .at(-1)
+        ?.messages?.map((m) => m.content)
+        .join("\n");
+      for (const needle of b.contextIncludes) {
+        if (!sent?.includes(needle)) failures.push(`branch: the new channel's request lacks "${needle}"`);
+      }
+      const after = db.select().from(runs).where(eq(runs.channelId, channel.id)).all().length;
+      if (after !== runsBefore.length)
+        failures.push(`branch: the source has ${after} run(s), expected ${runsBefore.length}`);
     }
   }
   return { name: scenario.name, failures };
