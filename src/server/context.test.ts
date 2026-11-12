@@ -58,6 +58,43 @@ describe("assembleContext", () => {
     expect(tokens).toBeLessThan(report.budget);
   });
 
+  it("puts a goal's state after the recent runs, so a new version leaves everything before it unchanged", () => {
+    const past = [run("r1", 20), run("r2", 20)];
+    const current: Message[] = [{ role: "user", content: "next lesson" }];
+    const v1 = assembleContext({ past, current, goalState: { version: 1, text: "Week 1 done." }, today: "Today." });
+    const at = v1.messages.findIndex((m) => m.content.includes("Week 1 done."));
+    // Head and both past runs come first; the date and the current run come after.
+    expect(at).toBe(v1.messages.length - 3);
+    expect(v1.messages[at]?.content).toMatch(/version 1.*not instructions/);
+    expect(v1.report.layers.find((l) => l.name === "goal_state")).toMatchObject({ budget: 3_000 });
+    expect(v1.report.goalStateVersion).toBe(1);
+
+    const v2 = assembleContext({
+      past,
+      current,
+      goalState: { version: 2, text: "Week 2 done." },
+      today: "Today.",
+      previous: v1.report,
+    });
+    expect(v2.messages.slice(0, at)).toEqual(v1.messages.slice(0, at));
+    // The start of the prompt did not move, so it is not a planned break.
+    expect(v2.report.breaks).toEqual([]);
+    expect(v2.report.goalStateVersion).toBe(2);
+  });
+
+  it("says an unwritten state is empty, counts it toward the budget, and leaves it out of other channels", () => {
+    const current: Message[] = [{ role: "user", content: "q" }];
+    const empty = assembleContext({ past: [], current, goalState: { version: 0, text: "" } });
+    expect(empty.messages.some((m) => /is empty \(version 0\)/.test(m.content))).toBe(true);
+    const plain = assembleContext({ past: [], current });
+    expect(plain.report.layers.map((l) => l.name)).not.toContain("goal_state");
+    expect(plain.report.goalStateVersion).toBeUndefined();
+    // A state that does not fit with the current run is an overflow, never a request over the window.
+    expect(() =>
+      assembleContext({ past: [], current, window: 6_000, goalState: { version: 1, text: "x".repeat(12_000) } }),
+    ).toThrow(ContextOverflow);
+  });
+
   it("is byte-stable: the same inputs plus one new message keep the earlier request as a prefix", () => {
     const past = [run("r1", 20)];
     const a = assembleContext({ past, current: [{ role: "user", content: "q" }] }).messages;
