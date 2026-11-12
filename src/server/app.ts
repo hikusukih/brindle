@@ -164,8 +164,8 @@ export function createApp({
   app.get("/api/runs/:id/context", (c) => c.json(runContext(db, c.req.param("id"))));
   app.get("/api/runs/:id", (c) => c.json(needEngine().get(c.req.param("id"))));
   app.post("/api/runs/:id/approvals/:callId", async (c) => {
-    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown };
-    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision));
+    const body = (await c.req.json().catch(() => ({}))) as { decision?: unknown; edits?: unknown };
+    return c.json(needEngine().decide(c.req.param("id"), c.req.param("callId"), body.decision, body.edits));
   });
   app.post("/api/runs/:id/cancel", (c) => c.json(needEngine().cancel(c.req.param("id"))));
 

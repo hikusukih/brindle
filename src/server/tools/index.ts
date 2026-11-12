@@ -1,5 +1,7 @@
 import type { ArtifactStore } from "../artifacts.js";
+import type { Db } from "../db/index.js";
 import { createArtifactTool, findArtifactsTool, readArtifactTool } from "./artifacts.js";
+import { searchHistoryTool } from "./history.js";
 import { ToolRegistry } from "./registry.js";
 import { speakTool } from "./speak.js";
 import { webFetchTool, webSearchTool } from "./web.js";
@@ -9,10 +11,15 @@ import { webFetchTool, webSearchTool } from "./web.js";
  * BRINDLE_SPEECH_URL names an OpenAI-compatible speech endpoint (with BRINDLE_SPEECH_MODEL, BRINDLE_SPEECH_VOICE and
  * BRINDLE_SPEECH_API_KEY as needed).
  */
-export function builtInTools(env: Record<string, string | undefined>, artifacts?: ArtifactStore): ToolRegistry {
+export function builtInTools(
+  env: Record<string, string | undefined>,
+  artifacts?: ArtifactStore,
+  db?: Db,
+): ToolRegistry {
   const registry = new ToolRegistry().register(
     webFetchTool({ allowPrivate: env.BRINDLE_WEB_FETCH_ALLOW_PRIVATE === "1" }),
   );
+  if (db) registry.register(searchHistoryTool(db));
   const search = env.BRINDLE_SEARCH_URL?.trim();
   if (artifacts) {
     registry.register(createArtifactTool(artifacts));

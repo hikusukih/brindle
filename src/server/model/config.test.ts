@@ -51,4 +51,15 @@ describe("modelRegistry", () => {
     );
     expect(() => modelRegistry({}).validate("openai:gpt-test")).toThrow(/not one of the configured/);
   });
+
+  it("offers the models the settings file names, and still refuses a spec outside the list", () => {
+    const env = { BRINDLE_OPENAI_BASE_URL: "http://127.0.0.1:11434/v1", BRINDLE_MODELS: "openai:a" };
+    const registry = modelRegistry(env, undefined, ["openai:b", "openai:a", "not a spec"]);
+    expect(registry.list().map((m) => m.spec)).toEqual(["openai:a", "openai:b"]);
+    expect(registry.resolve("openai:b")).toBeInstanceOf(OpenAiAdapter);
+    expect(() => registry.setDefault("openai:b")).not.toThrow();
+    expect(registry.defaultSpec).toBe("openai:b");
+    expect(() => registry.validate("openai:c")).toThrow(/not one of the configured/);
+    expect(() => registry.validate("not a spec")).toThrow(/not one of the configured/);
+  });
 });
