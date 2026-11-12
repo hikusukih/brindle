@@ -1,0 +1,1 @@
+ALTER TABLE `runs` ADD `tokens` integer DEFAULT 0 NOT NULL;
