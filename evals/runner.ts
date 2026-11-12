@@ -21,6 +21,7 @@ import { createArtifactTool, findArtifactsTool, readArtifactTool } from "../src/
 import { proposeGoalTool } from "../src/server/tools/goal.js";
 import { type EffectLevel, ToolRegistry } from "../src/server/tools/registry.js";
 import { proposeScheduleTool } from "../src/server/tools/schedule.js";
+import { webFetchTool } from "../src/server/tools/web.js";
 
 // One scenario is one channel and a list of user messages, each sent as its own run. The expectations are
 // per run, in order. `script` feeds the scripted model in CI; against a real model it is ignored, so
@@ -116,6 +117,11 @@ export type Scenario = {
    */
   branch?: { fromRun: number; script: ScriptedFixture; followUp: string; contextIncludes: string[] };
   tools?: FakeTool[];
+  /**
+   * Adds the real `web_fetch`, answering from these pages by URL instead of the network, so a scenario exercises its
+   * card for a URL the model wrote itself. A fetch counts as a tool that ran.
+   */
+  webPages?: Record<string, string>;
   seedArtifacts?: SeedArtifact[];
   mcpServers?: FakeMcpServer[];
   goal?: ScenarioGoal;
@@ -187,6 +193,22 @@ export async function runScenario(scenario: Scenario, live?: ModelAdapter): Prom
     tools.register(createArtifactTool(store));
     tools.register(findArtifactsTool(store));
     tools.register(readArtifactTool(store));
+  }
+  if (scenario.webPages) {
+    const pages = scenario.webPages;
+    tools.register(
+      webFetchTool({
+        // A documentation address, so the private-address check passes without a lookup.
+        resolve: async () => ["192.0.2.10"],
+        fetch: (async (input: URL | string) => {
+          ran.push("web_fetch");
+          const page = pages[String(input)];
+          return page === undefined
+            ? new Response("not found", { status: 404 })
+            : new Response(page, { headers: { "content-type": "text/plain" } });
+        }) as typeof fetch,
+      }),
+    );
   }
   // The scheduler is only used to store and read schedules; nothing here starts a run from one.
   const scheduler = new Scheduler(

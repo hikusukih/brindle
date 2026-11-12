@@ -1,6 +1,6 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { Tool } from "./registry.js";
+import type { KnownText, Tool } from "./registry.js";
 
 export type WebOptions = {
   fetch?: typeof fetch;
@@ -97,7 +97,46 @@ async function readCapped(res: Response): Promise<string> {
   return new TextDecoder().decode(Buffer.concat(chunks).subarray(0, maxBytes));
 }
 
-/** Fetches a public page with GET, no body and no credential, which is why it can stay `read`. */
+/** A URL compared as docs/decisions.md settles: exact, except that the scheme and host are compared without case. */
+export function normalizeUrl(text: string): string | null {
+  try {
+    const url = new URL(text);
+    return url.protocol === "http:" || url.protocol === "https:" ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every http(s) URL in a text, normalized; trailing punctuation is tried both kept and dropped, since prose ends sentences on links. */
+export function urlsIn(text: string): Set<string> {
+  const found = new Set<string>();
+  for (const [raw] of text.matchAll(/\bhttps?:\/\/[^\s<>"'`]+/gi)) {
+    for (let candidate = raw; candidate; ) {
+      const url = normalizeUrl(candidate);
+      if (url) found.add(url);
+      const shorter = candidate.replace(/[.,;:!?)\]}*]$/, "");
+      if (shorter === candidate) break;
+      candidate = shorter;
+    }
+  }
+  return found;
+}
+
+/**
+ * True unless the URL appears in what the user wrote in this scope or in an earlier tool result of the run. A URL the
+ * model composed could carry conversation text to another server in its path or query (docs/decisions.md).
+ */
+export function composedUrl(url: unknown, known: KnownText): boolean {
+  const target = normalizeUrl(String(url));
+  // Not a URL web_fetch will fetch: execute refuses it without any request, so there is nothing to approve.
+  if (!target) return false;
+  return !urlsIn(known.userText).has(target) && !urlsIn(known.earlierResults).has(target);
+}
+
+/**
+ * Fetches a public page with GET, no body and no credential, which is why it can stay `read`; a URL the model wrote
+ * itself still waits for a card.
+ */
 export function webFetchTool(options: WebOptions = {}): Tool {
   const doFetch = options.fetch ?? fetch;
   return {
@@ -110,6 +149,8 @@ export function webFetchTool(options: WebOptions = {}): Tool {
       properties: { url: { type: "string" } },
       required: ["url"],
     },
+    askWhen: (args, known) => composedUrl(args.url, known),
+    describeCall: (args) => `Fetch ${String(args.url)} (a web address the assistant wrote itself)`,
     async execute(args, ctx) {
       let url: URL;
       try {
