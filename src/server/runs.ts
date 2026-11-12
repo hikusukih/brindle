@@ -108,7 +108,7 @@ function payload(e: RunEvent): Record<string, unknown> {
 }
 
 /** Rebuilds the model's view of one run from its stored events: the user message, each step's reply and tool calls, each tool result. */
-function messagesFromEvents(stored: RunEvent[]): Message[] {
+export function messagesFromEvents(stored: RunEvent[]): Message[] {
   const out: Message[] = [];
   let turn: Extract<Message, { role: "assistant" }> | undefined;
   for (const e of stored) {
@@ -137,7 +137,7 @@ function messagesFromEvents(stored: RunEvent[]): Message[] {
 }
 
 /** A run that ended mid-step can leave a tool call with no result, which providers reject; drop those calls. */
-function closeCalls(messages: Message[]): Message[] {
+export function closeCalls(messages: Message[]): Message[] {
   const answered = new Set(messages.flatMap((m) => (m.role === "tool" ? [m.toolCallId] : [])));
   return messages.flatMap((m): Message[] => {
     if (m.role !== "assistant" || !m.toolCalls) return [m];

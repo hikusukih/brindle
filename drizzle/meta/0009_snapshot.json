@@ -1,7 +1,7 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "100fccbe-1931-4fa8-b932-fd95cff69ff2",
+  "id": "ed024748-dceb-4b90-98dc-8ec65060134c",
   "prevId": "3dc66f08-5603-4b21-b730-a3873ccf8933",
   "tables": {
     "app_meta": {
@@ -171,6 +171,13 @@
         },
         "model": {
           "name": "model",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "branch": {
+          "name": "branch",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -478,21 +485,6 @@
           "primaryKey": false,
           "notNull": false,
           "autoincrement": false
-        },
-        "goal_id": {
-          "name": "goal_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "trigger": {
-          "name": "trigger",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'user'"
         }
       },
       "indexes": {
