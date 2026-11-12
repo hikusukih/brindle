@@ -1,0 +1,68 @@
+name: Boundary (real llama.cpp)
+
+# The model-boundary suite against a real llama.cpp server running a tiny model (box P2.12). Reply quality does not
+# matter here; real tokenization, real length rejections and real cache reuse do. Both downloads are pinned and
+# checked against their SHA-256, and cached between runs.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: boundary-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  boundary:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      LLAMA_TAG: b12287
+      LLAMA_ASSET: llama-b12287-bin-ubuntu-x64.tar.gz
+      LLAMA_SHA256: c0f668e710010e273d75634af937500aef4d19834edfed2d8b2608233c3a991a
+      # 145 MB; a pinned revision, so the file behind the URL can't change under the checksum.
+      MODEL_REPO: bartowski/SmolLM2-135M-Instruct-GGUF
+      MODEL_REV: 09816acd5d99df7be770d85ea30822623dab342c
+      MODEL_FILE: SmolLM2-135M-Instruct-Q8_0.gguf
+      MODEL_SHA256: 5a1395716f7913741cc51d98581b9b1228d80987a9f7d3664106742eb06bba83
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - uses: actions/cache@v4
+        with:
+          path: .llama
+          key: llama-${{ env.LLAMA_SHA256 }}-${{ env.MODEL_SHA256 }}
+      - name: Fetch llama.cpp and the model, and check both
+        run: |
+          mkdir -p .llama && cd .llama
+          [ -f "$LLAMA_ASSET" ] || curl -sSfLO "https://github.com/ggml-org/llama.cpp/releases/download/$LLAMA_TAG/$LLAMA_ASSET"
+          [ -f "$MODEL_FILE" ] || curl -sSfL -o "$MODEL_FILE" "https://huggingface.co/$MODEL_REPO/resolve/$MODEL_REV/$MODEL_FILE"
+          echo "$LLAMA_SHA256  $LLAMA_ASSET" | sha256sum --check
+          echo "$MODEL_SHA256  $MODEL_FILE" | sha256sum --check
+          rm -rf bin && mkdir bin && tar xzf "$LLAMA_ASSET" -C bin
+      # Two slots, as the README says to run it for Brindle; the context size is split across them, so each has 8,192
+      # tokens, the tiny model's own limit. A 4,096-token slot is too small: Brindle keeps 4,000 for the reply.
+      - name: Start llama.cpp's server
+        run: |
+          server=$(find .llama/bin -name llama-server -type f | head -1)
+          LD_LIBRARY_PATH="$(dirname "$server")" nohup "$server" -m ".llama/$MODEL_FILE" --host 127.0.0.1 --port 8080 \
+            -c 16384 --parallel 2 > llama.log 2>&1 &
+          for i in $(seq 1 60); do curl -fsS http://127.0.0.1:8080/health && exit 0; sleep 1; done
+          cat llama.log
+          exit 1
+      - name: Run the boundary suite against it
+        run: npx vitest run --reporter=verbose src/server/model/boundary
+        env:
+          BRINDLE_BOUNDARY_URL: http://127.0.0.1:8080/v1
+          BRINDLE_BOUNDARY_TINY: "1"
+      - name: The server's log
+        if: always()
+        run: tail -n 100 llama.log || true
