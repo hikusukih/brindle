@@ -1,0 +1,125 @@
+{
+  "name": "facts-survive-rolling-compaction",
+  "description": "Facts, a decision with its reason and a commitment planted early survive several compaction rounds: the summary carries them forward and the final request still contains them.",
+  "messages": [
+    "My trip budget is 500 dollars. Remember it. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "We decided on the train because it is cheaper than flying. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "Please remember to send the booking list by Friday. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "Anna's number is 555-0100. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "Let us plan something else now. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "And another unrelated topic. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "One more unrelated topic. filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler filler ",
+    "What was the budget, the reason for the train, the Friday commitment and Anna's number?"
+  ],
+  "limits": {
+    "contextWindow": 4600
+  },
+  "compaction": {
+    "script": {
+      "turns": [
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100. Later topics were small talk."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        },
+        {
+          "text": [
+            "Budget: 500 dollars. Decision: train, cheaper than flying. Commitment: send the booking list by Friday. Contact: Anna 555-0100."
+          ]
+        }
+      ]
+    }
+  },
+  "script": {
+    "turns": [
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Noted."]
+      },
+      {
+        "text": ["Budget 500 dollars; train because cheaper than flying; booking list by Friday; Anna 555-0100."]
+      }
+    ]
+  },
+  "expect": [
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done"
+    },
+    {
+      "status": "done",
+      "replyIncludes": ["500 dollars", "cheaper", "Friday", "555-0100"],
+      "summaryIncludes": ["500 dollars", "cheaper than flying", "Friday", "555-0100"],
+      "contextIncludes": ["500 dollars", "cheaper than flying", "Friday", "555-0100"]
+    }
+  ]
+}

@@ -41,6 +41,10 @@ function parseBlock(block: string): SseMessage | undefined {
 
 /** Maps an HTTP failure to the one error type callers handle. */
 export function httpError(status: number, detail: string): ModelError {
+  // llama.cpp refuses a prompt larger than a slot's window with a 400 naming this error type. Retrying cannot help, and
+  // the run should say it plainly instead of showing a raw server body.
+  if (status === 400 && /exceed_context_size_error|exceeds the available context size/.test(detail))
+    return new ModelError("invalid_request", "This conversation is too long for the model.", false);
   const message = `Model API answered ${status}${detail ? `: ${detail.slice(0, 200)}` : ""}`;
   if (status === 401 || status === 403) return new ModelError("auth", message);
   if (status === 429) return new ModelError("rate_limit", message);
