@@ -2,7 +2,8 @@ import { randomUUID } from "node:crypto";
 import { Cron } from "croner";
 import { and, asc, eq, inArray, sql } from "drizzle-orm";
 import type { Db } from "./db/index.js";
-import { events, runs, scheduleFires, schedules } from "./db/schema.js";
+import { channels, events, goals, runs, scheduleFires, schedules } from "./db/schema.js";
+import type { ModelSettingsStore } from "./model/settings.js";
 
 // See docs/design/goals.md. Starting values, tuned from the log.
 const hour = 60 * 60 * 1000;
@@ -19,7 +20,32 @@ export type SchedulerOptions = {
   graceMillis?: number;
   /** Scheduled runs at once across the server. */
   maxConcurrent?: number;
+  /**
+   * The model a goal's runs use, and that model's own limit on scheduled runs at once, if it has one. Both are needed
+   * for a per-model limit; without them, or with no limit set, only maxConcurrent holds a fire back.
+   */
+  modelOf?: (goalId: string) => string;
+  modelLimit?: (spec: string) => number | undefined;
 };
+
+/** The per-model options from the model settings file (P2.11): a goal's runs use its channel's model, else the default. */
+export function modelLimitsFrom(
+  db: Db,
+  settings: Pick<ModelSettingsStore, "forSpec">,
+): Pick<SchedulerOptions, "modelOf" | "modelLimit"> {
+  return {
+    modelOf: (goalId) => {
+      const row = db
+        .select({ model: channels.model })
+        .from(goals)
+        .innerJoin(channels, eq(channels.id, goals.channelId))
+        .where(eq(goals.id, goalId))
+        .get();
+      return settings.forSpec(row?.model ?? null).model;
+    },
+    modelLimit: (spec) => settings.forSpec(spec).maxScheduledRuns,
+  };
+}
 
 export type SchedulerHooks = {
   /** Inside the transaction that marks a fire started: create the run's row and return its id. Nothing may run yet. */
@@ -283,6 +309,7 @@ export class Scheduler {
       .orderBy(asc(scheduleFires.dueAt))
       .all();
     let inFlight = this.scheduledRunning();
+    const perModel = this.scheduledRunningByModel();
     const claimed = new Set<string>();
     for (const fire of waiting) {
       const stamp = now.toISOString();
@@ -298,6 +325,10 @@ export class Scheduler {
         continue;
       }
       if (inFlight >= this.maxConcurrent || claimed.has(schedule.goalId)) continue;
+      // A model at its own limit leaves this fire waiting; a later fire on another model may still take the room.
+      const model = this.options.modelLimit ? this.options.modelOf?.(schedule.goalId) : undefined;
+      const limit = model === undefined ? undefined : this.options.modelLimit?.(model);
+      if (model !== undefined && limit !== undefined && (perModel.get(model) ?? 0) >= limit) continue;
       let busy: boolean;
       try {
         busy = this.hooks.goalBusy(schedule.goalId);
@@ -324,6 +355,7 @@ export class Scheduler {
       }
       claimed.add(schedule.goalId);
       inFlight++;
+      if (model !== undefined) perModel.set(model, (perModel.get(model) ?? 0) + 1);
       try {
         this.hooks.beginRun(runId);
       } catch (error) {
@@ -331,6 +363,7 @@ export class Scheduler {
         console.error(`Fire ${fire.id} failed to start: ${(error as Error).message}`);
         this.mark(fire.id, "failed_to_start", stamp);
         inFlight--;
+        if (model !== undefined) perModel.set(model, (perModel.get(model) ?? 1) - 1);
       }
     }
   }
@@ -344,6 +377,25 @@ export class Scheduler {
       .where(and(eq(scheduleFires.state, "started"), inArray(runs.status, ["running"])))
       .get();
     return row?.n ?? 0;
+  }
+
+  /** The same runs counted by the model their goal uses; empty unless a per-model limit is configured. */
+  private scheduledRunningByModel(): Map<string, number> {
+    const counts = new Map<string, number>();
+    const { modelOf, modelLimit } = this.options;
+    if (!modelOf || !modelLimit) return counts;
+    const going = this.db
+      .select({ goalId: schedules.goalId })
+      .from(scheduleFires)
+      .innerJoin(runs, eq(runs.id, scheduleFires.runId))
+      .innerJoin(schedules, eq(schedules.id, scheduleFires.scheduleId))
+      .where(and(eq(scheduleFires.state, "started"), inArray(runs.status, ["running"])))
+      .all();
+    for (const { goalId } of going) {
+      const model = modelOf(goalId);
+      counts.set(model, (counts.get(model) ?? 0) + 1);
+    }
+    return counts;
   }
 
   private mark(fireId: string, state: Fire["state"], stamp: string) {

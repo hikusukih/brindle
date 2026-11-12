@@ -1,9 +1,11 @@
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { createChannel } from "./channels.js";
+import { createChannel, setChannelModel } from "./channels.js";
 import { openDatabase } from "./db/index.js";
 import { events, runs, schedules } from "./db/schema.js";
-import { Scheduler, SchedulerError, type SchedulerHooks, type SchedulerOptions } from "./scheduler.js";
+import { createGoal } from "./goals.js";
+import { ModelSettingsStore, parseSettings } from "./model/settings.js";
+import { modelLimitsFrom, Scheduler, SchedulerError, type SchedulerHooks, type SchedulerOptions } from "./scheduler.js";
 
 const at = (iso: string) => new Date(iso);
 const daily = "30 6 * * *";
@@ -241,5 +243,77 @@ describe("scheduler", () => {
   it("refuses an expression it can't read", () => {
     const { scheduler } = setup();
     expect(() => scheduler.createSchedule({ goalId: "g", cron: "every day", prompt: "go" })).toThrow(SchedulerError);
+  });
+});
+
+describe("a per-model limit on scheduled runs", () => {
+  // Goals a and b run on a large model, c on a small one.
+  const modelOf = (goalId: string) => (goalId === "c" ? "openai:small" : "openai:large");
+  const three = (scheduler: Scheduler) => {
+    for (const goalId of ["a", "b", "c"])
+      scheduler.createSchedule({ goalId, cron: daily, prompt: "go" }, at("2026-10-27T12:00:00Z"));
+    scheduler.tick(at("2026-10-28T10:30:05Z"));
+  };
+  const started = (s: Scheduler, goalOf: Map<string, string>) =>
+    s
+      .log()
+      .filter((f) => f.state === "started")
+      .map((f) => goalOf.get(f.scheduleId))
+      .sort();
+  const goalsOf = (db: ReturnType<typeof openDatabase>) =>
+    new Map(
+      db
+        .select()
+        .from(schedules)
+        .all()
+        .map((r) => [r.id, r.goalId]),
+    );
+
+  it("a model at its limit waits while another model's run starts under the overall cap", () => {
+    const { db, scheduler, begun } = setup({
+      maxConcurrent: 2,
+      modelOf,
+      modelLimit: (spec) => (spec === "openai:large" ? 1 : undefined),
+    });
+    three(scheduler);
+    expect(begun).toHaveLength(2);
+    expect(started(scheduler, goalsOf(db))).toEqual(["a", "c"]);
+    expect(states(scheduler).filter((l) => l.endsWith("waiting"))).toHaveLength(1);
+
+    // When the large model's run ends, the waiting one takes its place.
+    const first = db.select().from(runs).all()[0];
+    db.update(runs)
+      .set({ status: "done" })
+      .where(eq(runs.id, first?.id ?? ""))
+      .run();
+    scheduler.tick(at("2026-10-28T10:31:00Z"));
+    expect(started(scheduler, goalsOf(db))).toEqual(["a", "b", "c"]);
+  });
+
+  it("changes nothing when no model has a limit", () => {
+    const { db, scheduler, begun } = setup({ maxConcurrent: 2, modelOf, modelLimit: () => undefined });
+    three(scheduler);
+    expect(begun).toHaveLength(2);
+    // The overall cap alone decides, in due order, as without the options.
+    expect(started(scheduler, goalsOf(db))).toEqual(["a", "b"]);
+  });
+
+  it("reads the limit from the model settings file, for the goal channel's model or else the default", () => {
+    const db = openDatabase(":memory:");
+    const onLarge = createGoal(db, { title: "On large", brief: "Run big." });
+    const onDefault = createGoal(db, { title: "On default", brief: "Run small." });
+    setChannelModel(db, onLarge.channelId, "openai:large", () => {});
+    const settings = new ModelSettingsStore(
+      {
+        "openai:large": parseSettings("test", "openai:large", { maxScheduledRuns: 1 }),
+        "openai:small": parseSettings("test", "openai:small", {}),
+      },
+      () => "openai:small",
+    );
+    const { modelOf, modelLimit } = modelLimitsFrom(db, settings);
+    expect(modelOf?.(onLarge.id)).toBe("openai:large");
+    expect(modelOf?.(onDefault.id)).toBe("openai:small");
+    expect(modelLimit?.("openai:large")).toBe(1);
+    expect(modelLimit?.("openai:small")).toBeUndefined();
   });
 });
